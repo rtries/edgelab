@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+/* EdgeLab design tokens — terminal-grade dark surface.
+   Deep ink base, desk-lamp amber accent (the working color of trading
+   terminals), and strictly semantic gain/loss colors reserved for P&L. */
+@theme {
+  --color-ink-950: #0a0e14;   /* app background */
+  --color-ink-900: #10151d;   /* panels */
+  --color-ink-800: #1a212c;   /* raised surfaces / borders */
+  --color-ink-400: #6b7687;   /* muted text */
+  --color-ink-100: #dbe2ec;   /* primary text */
+  --color-amber-signal: #e8a33d; /* accent — actions, focus, live status */
+  --color-gain: #35c48d;      /* P&L up only */
+  --color-loss: #e35d6a;      /* P&L down only */
+
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background: var(--color-ink-950);
+  color: var(--color-ink-100);
+  font-family: var(--font-sans);
+}
+
+/* Numbers are data: always tabular, always mono. */
+.figure {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
