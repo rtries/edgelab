@@ -35,7 +35,12 @@ class Settings(BaseSettings):
     # AI assistant
     anthropic_api_key: str = ""
 
-    # auth (Supabase-issued JWTs, verified against the project's JWT secret)
+    # auth (Supabase-issued JWTs)
+    # supabase_url enables JWKS-based verification (ES256/RS256) — the
+    # default for current Supabase projects, and the primary path.
+    supabase_url: str = ""
+    # supabase_jwt_secret is a fallback for older projects still on the
+    # legacy shared HS256 secret; optional if supabase_url is set.
     supabase_jwt_secret: str = ""
     auth_disabled: bool = False  # local dev / tests only — never true in prod
 
