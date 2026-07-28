@@ -24,10 +24,14 @@ with it set unless api_env == "development".
 """
 from __future__ import annotations
 
+import logging
+
 import jwt
 from fastapi import Header, HTTPException
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 DEV_USER_ID = "dev-local"
 
@@ -70,7 +74,8 @@ def _decode(token: str) -> dict:
                 algorithms=["ES256", "RS256"],
                 audience="authenticated",
             )
-        except jwt.PyJWTError:
+        except jwt.PyJWTError as exc:
+            logger.warning("JWKS verification failed, falling back: %r", exc)
             if not settings.supabase_jwt_secret:
                 raise
             # fall through to the legacy secret below
