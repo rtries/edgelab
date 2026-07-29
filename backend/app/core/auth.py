@@ -72,7 +72,7 @@ def _decode(token: str) -> dict:
                 token,
                 signing_key.key,
                 algorithms=["ES256", "RS256"],
-                audience="authenticated",
+                options={"verify_aud": False},
             )
         except jwt.PyJWTError as exc:
             logger.warning("JWKS verification failed, falling back: %r", exc)
@@ -85,7 +85,7 @@ def _decode(token: str) -> dict:
             token,
             settings.supabase_jwt_secret,
             algorithms=["HS256"],
-            audience="authenticated",
+            options={"verify_aud": False},
         )
 
     raise HTTPException(
