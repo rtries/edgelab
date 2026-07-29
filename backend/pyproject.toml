@@ -19,7 +19,7 @@ dependencies = [
     "pyarrow>=15.0",
     "httpx>=0.27",
     "python-json-logger>=2.0",
-    "pyjwt>=2.7",                  # verifies Supabase-issued auth tokens
+    "pyjwt[crypto]>=2.7",          # [crypto] needed for ES256/RS256 (Supabase JWKS)
 ]
 
 [project.optional-dependencies]
