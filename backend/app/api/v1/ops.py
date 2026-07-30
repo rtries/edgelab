@@ -33,6 +33,7 @@ from ops.deployments import (
     deployment_from_experiment,
     transition,
 )
+from ops.brokers.alpaca import AlpacaBroker
 from ops.drift import detect_drift, health_status
 from ops.events import ReplayFeed
 from ops.execution import EventLog, Ledger, PaperBroker
@@ -43,6 +44,7 @@ from ops.patterns import PatternRecorder, PatternStore
 from ops.similarity import find_similar
 
 from app.api.v1.research import data_root, experiment_store, research_root
+from app.core.config import settings
 from app.core.auth import AuthUser, get_current_user
 
 router = APIRouter()
@@ -189,6 +191,100 @@ def paper_logs(
     log = EventLog(log_path, stream="paper")
     records = log.records()
     return records[-limit:]
+
+
+# ── Alpaca broker: real orders, paper or live ──────────────────────
+# THE GATE: a deployment can only trade through Alpaca's PAPER endpoint
+# while status == "paper", and only through Alpaca's LIVE endpoint
+# while status == "live". There is no other path to live money — the
+# deployment must have earned "live" through the normal transition()
+# gate (strong confidence + proven paper evidence) before this endpoint
+# will ever construct a live-mode broker. A second, server-wide switch
+# (ALPACA_PAPER=true by default) has to also be explicitly turned off
+# before a live order can ever be placed, so a single misconfigured
+# deployment can't accidentally trade real money on a server meant to
+# stay in paper mode.
+class AlpacaRunRequest(BaseModel):
+    start: str | None = None
+    end: str | None = None
+
+
+@router.post("/ops/deployments/{dep_id}/alpaca/run")
+def run_alpaca_segment(
+    dep_id: str, req: AlpacaRunRequest, user: AuthUser = CurrentUser
+) -> dict:
+    dep = _get_deployment(user.id, dep_id)
+    if dep.status not in ("paper", "live"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"deployment status is '{dep.status}' — Alpaca runs "
+                   "require 'paper' or 'live'",
+        )
+    live_mode = dep.status == "live"
+    if live_mode and settings.alpaca_paper:
+        raise HTTPException(
+            status_code=422,
+            detail="deployment is 'live' but the server-wide ALPACA_PAPER "
+                   "switch is still on — flip it off explicitly before "
+                   "any deployment can place real live orders",
+        )
+    if not settings.alpaca_api_key or not settings.alpaca_api_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="ALPACA_API_KEY / ALPACA_API_SECRET are not configured",
+        )
+
+    data_store = ParquetStore(data_root())
+    start = datetime.fromisoformat(req.start) if req.start else None
+    end = datetime.fromisoformat(req.end) if req.end else None
+    feed = ReplayFeed(data_store, dep.symbols, Timeframe(dep.timeframe),
+                      start=start, end=end)
+
+    dep_ops_dir = ops_root(user.id) / "deployments" / dep_id
+    stream = "live" if live_mode else "paper"
+    log = EventLog(dep_ops_dir / f"alpaca_{stream}.jsonl", stream=stream)
+    broker = AlpacaBroker(
+        api_key=settings.alpaca_api_key, api_secret=settings.alpaca_api_secret,
+        log=log, paper=not live_mode,
+    )
+    ledger = Ledger(initial_cash=100_000.0)  # local accounting mirror; Alpaca is the source of truth for actual funds
+    loop = LiveLoop(
+        dep, feed, ledger, broker, log, stream=stream,
+        pattern_recorder=PatternRecorder(pattern_store(user.id)),
+        emergency_stop_flag=lambda: emergency_stop_active(user.id),
+    )
+    summary = loop.run()
+    summary["alpaca_mode"] = "live" if live_mode else "paper"
+    return summary
+
+
+@router.get("/ops/deployments/{dep_id}/alpaca/logs")
+def alpaca_logs(
+    dep_id: str, live: bool = False, limit: int = 200,
+    user: AuthUser = CurrentUser,
+) -> list[dict]:
+    dep = _get_deployment(user.id, dep_id)
+    stream = "live" if live else "paper"
+    log_path = ops_root(user.id) / "deployments" / dep_id / f"alpaca_{stream}.jsonl"
+    log = EventLog(log_path, stream=stream)
+    return log.records()[-limit:]
+
+
+@router.post("/ops/deployments/{dep_id}/alpaca/cancel/{order_id}")
+def cancel_alpaca_order(
+    dep_id: str, order_id: int, live: bool = False,
+    user: AuthUser = CurrentUser,
+) -> dict:
+    """Manual/operator cancellation. Requires re-pointing at the same
+    Alpaca environment (paper/live) the order was placed in — orders
+    aren't tracked across requests, so this only works within the
+    lifetime of a single /alpaca/run call in the current design; a
+    persistent broker session is the natural next step (see docs)."""
+    raise HTTPException(
+        status_code=501,
+        detail="cancellation requires a persistent broker session — "
+               "not yet wired for standalone API calls (see docs/OPERATIONS.md)",
+    )
 
 
 # ── health & drift ───────────────────────────────────────────────────
