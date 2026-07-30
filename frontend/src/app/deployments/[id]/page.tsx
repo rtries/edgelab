@@ -23,7 +23,7 @@ import {
   Tag,
 } from "@/components/ui";
 
-const TABS = ["Config", "Health", "Drift", "Paper"];
+const TABS = ["Config", "Health", "Drift", "Paper", "Alpaca"];
 
 const NEXT_STATUS: Record<string, string[]> = {
   proposed: ["paper", "rejected"],
@@ -50,6 +50,7 @@ export default function DeploymentDetail() {
   const [health, setHealth] = useState<HealthRow[] | null>(null);
   const [drift, setDrift] = useState<DriftResult | null>(null);
   const [logs, setLogs] = useState<Record<string, unknown>[] | null>(null);
+  const [alpacaLogs, setAlpacaLogs] = useState<Record<string, unknown>[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -70,7 +71,10 @@ export default function DeploymentDetail() {
     if (tab === "Paper") {
       api.paperLogs(id).then(setLogs).catch(() => setLogs([]));
     }
-  }, [tab, id]);
+    if (tab === "Alpaca" && dep) {
+      api.alpacaLogs(id, dep.status === "live").then(setAlpacaLogs).catch(() => setAlpacaLogs([]));
+    }
+  }, [tab, id, dep]);
 
   if (error) return <ErrorBox error={error} />;
   if (!dep) return <Loading label={`loading ${id}`} />;
@@ -109,6 +113,32 @@ export default function DeploymentDetail() {
     }
   }
 
+  async function runAlpaca(live: boolean) {
+    if (live) {
+      // Real money. One extra deliberate confirmation on top of every
+      // server-side gate (deployment status, server-wide ALPACA_PAPER
+      // switch) — this button only ever appears once those already
+      // passed, so this is the last human checkpoint, not the only one.
+      const ok = window.confirm(
+        "This places REAL orders with REAL money through Alpaca's live " +
+          "account. This is not a simulation. Continue?",
+      );
+      if (!ok) return;
+    }
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.runAlpaca(id, {});
+      setTab("Alpaca");
+      const l = await api.alpacaLogs(id, live);
+      setAlpacaLogs(l);
+    } catch (e) {
+      setActionError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -131,6 +161,26 @@ export default function DeploymentDetail() {
               className="rounded border border-amber-signal px-3 py-1 text-xs uppercase tracking-widest text-amber-signal hover:bg-amber-signal/10 disabled:opacity-50"
             >
               Run paper segment
+            </button>
+          )}
+          {dep.status === "paper" && (
+            <button
+              disabled={busy}
+              onClick={() => runAlpaca(false)}
+              className="rounded border border-amber-signal px-3 py-1 text-xs uppercase tracking-widest text-amber-signal hover:bg-amber-signal/10 disabled:opacity-50"
+              title="Places real orders in Alpaca's paper environment (fake money, real order matching)"
+            >
+              Run via Alpaca (paper)
+            </button>
+          )}
+          {dep.status === "live" && (
+            <button
+              disabled={busy}
+              onClick={() => runAlpaca(true)}
+              className="rounded border border-loss px-3 py-1 text-xs uppercase tracking-widest text-loss hover:bg-loss/10 disabled:opacity-50"
+              title="Places REAL orders with REAL money"
+            >
+              Run via Alpaca (LIVE — real money)
             </button>
           )}
           {transitions.map((to) => (
@@ -249,6 +299,40 @@ export default function DeploymentDetail() {
                   r.qty !== undefined ? String(r.qty) : "—",
                   r.price !== undefined ? fmt.num(Number(r.price)) : "—",
                   String(r.reason ?? r.check ?? "—"),
+                ])}
+            />
+          )}
+        </Panel>
+      )}
+
+      {tab === "Alpaca" && (
+        <Panel title={`Alpaca ${dep.status === "live" ? "live" : "paper"} order log (most recent)`}>
+          <p className="mb-3 text-xs text-ink-400">
+            {dep.status === "live"
+              ? "These are real orders placed with real money through Alpaca's live account."
+              : "These orders ran in Alpaca's own paper environment — real order matching against real market data, fake money."}
+          </p>
+          {!alpacaLogs && <Loading label="loading Alpaca log" />}
+          {alpacaLogs && alpacaLogs.length === 0 && (
+            <p className="text-sm text-ink-400">
+              No Alpaca activity yet — use the &quot;Run via Alpaca&quot; button above.
+            </p>
+          )}
+          {alpacaLogs && alpacaLogs.length > 0 && (
+            <DataTable
+              columns={["ts", "kind", "symbol", "side", "qty", "price", "alpaca status", "reason"]}
+              rows={alpacaLogs
+                .slice()
+                .reverse()
+                .map((r) => [
+                  fmt.time(String(r.ts)),
+                  String(r.kind),
+                  String(r.symbol ?? "—"),
+                  String(r.side ?? "—"),
+                  r.qty !== undefined ? String(r.qty) : "—",
+                  r.price !== undefined ? fmt.num(Number(r.price)) : "—",
+                  String(r.alpaca_status ?? "—"),
+                  String(r.reason ?? "—"),
                 ])}
             />
           )}

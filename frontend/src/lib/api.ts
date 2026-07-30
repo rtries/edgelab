@@ -367,6 +367,15 @@ export const api = {
     get<Record<string, unknown>[]>(
       `/api/v1/ops/deployments/${id}/paper/logs?limit=${limit}`,
     ),
+  // Real orders through Alpaca — paper or live, gated server-side by the
+  // deployment's lifecycle status. The frontend never decides which
+  // Alpaca environment is used; the backend picks it from dep.status.
+  runAlpaca: (id: string, opts: { start?: string; end?: string } = {}) =>
+    post<Record<string, unknown>>(`/api/v1/ops/deployments/${id}/alpaca/run`, opts),
+  alpacaLogs: (id: string, live: boolean, limit = 200) =>
+    get<Record<string, unknown>[]>(
+      `/api/v1/ops/deployments/${id}/alpaca/logs?live=${live}&limit=${limit}`,
+    ),
   deploymentHealth: (id: string) =>
     get<{ deployment_id: string; rows: HealthRow[] }>(
       `/api/v1/ops/deployments/${id}/health`,
