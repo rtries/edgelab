@@ -181,6 +181,7 @@ export function ErrorBox({ error }: { error: string }) {
 
 const NAV: { href: string; label: string }[] = [
   { href: "/", label: "Dashboard" },
+  { href: "/markets", label: "Markets" },
   { href: "/morning", label: "Morning Brief" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/strategies", label: "Strategies" },

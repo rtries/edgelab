@@ -386,6 +386,110 @@ export function MonthlyGrid({ rows }: { rows: { year: number; month: number; val
   );
 }
 
+/** OHLC candlestick chart with optional buy-zone / stop / target overlays —
+ * the "TradingView-style" price panel for the Markets page. */
+export type Candle = { t: string; o: number; h: number; l: number; c: number };
+
+export function CandlestickChart({
+  candles,
+  height = 360,
+  buyZone,
+  stopLoss,
+  profitTarget,
+}: {
+  candles: Candle[];
+  height?: number;
+  buyZone?: [number, number];
+  stopLoss?: number;
+  profitTarget?: number;
+}) {
+  const width = 900;
+  const pad = { l: 56, r: 8, t: 10, b: 22 };
+  const [hover, setHover] = useState<number | null>(null);
+
+  const highs = candles.map((c) => c.h);
+  const lows = candles.map((c) => c.l);
+  const levels = [stopLoss, profitTarget, buyZone?.[0], buyZone?.[1]].filter(
+    (v): v is number => v !== undefined,
+  );
+  const [lo, hi] = extent([...highs, ...lows, ...levels]);
+  const sx = scale([0, Math.max(candles.length - 1, 1)], [pad.l, width - pad.r]);
+  const sy = scale([lo, hi], [height - pad.b, pad.t]);
+  const bw = Math.max(((width - pad.l - pad.r) / candles.length) * 0.6, 1);
+  const gridLines = 4;
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="w-full"
+      role="img"
+      onMouseLeave={() => setHover(null)}
+      onMouseMove={(e) => {
+        const rect = (e.target as SVGElement).closest("svg")!.getBoundingClientRect();
+        const px = ((e.clientX - rect.left) / rect.width) * width;
+        const i = Math.round(((px - pad.l) / (width - pad.l - pad.r)) * (candles.length - 1));
+        setHover(Math.max(0, Math.min(candles.length - 1, i)));
+      }}
+    >
+      {Array.from({ length: gridLines + 1 }, (_, k) => {
+        const v = lo + ((hi - lo) * k) / gridLines;
+        return (
+          <g key={k}>
+            <line x1={pad.l} x2={width - pad.r} y1={sy(v)} y2={sy(v)} stroke={GRID} strokeWidth={1} />
+            <text x={pad.l - 6} y={sy(v) + 3} textAnchor="end" fontSize={10} fill={MUTED} className="figure">
+              {fmt.num(v, 2)}
+            </text>
+          </g>
+        );
+      })}
+      {buyZone && (
+        <rect
+          x={pad.l}
+          y={sy(buyZone[1])}
+          width={width - pad.l - pad.r}
+          height={Math.max(sy(buyZone[0]) - sy(buyZone[1]), 1)}
+          fill={AMBER}
+          opacity={0.1}
+        />
+      )}
+      {stopLoss !== undefined && (
+        <line x1={pad.l} x2={width - pad.r} y1={sy(stopLoss)} y2={sy(stopLoss)} stroke={LOSS} strokeWidth={1.2} strokeDasharray="4 3" />
+      )}
+      {profitTarget !== undefined && (
+        <line x1={pad.l} x2={width - pad.r} y1={sy(profitTarget)} y2={sy(profitTarget)} stroke={GAIN} strokeWidth={1.2} strokeDasharray="4 3" />
+      )}
+      {candles.map((c, i) => {
+        const x = sx(i);
+        const up = c.c >= c.o;
+        const color = up ? GAIN : LOSS;
+        const bodyTop = sy(Math.max(c.o, c.c));
+        const bodyBot = sy(Math.min(c.o, c.c));
+        return (
+          <g key={c.t} opacity={hover === null || hover === i ? 1 : 0.55}>
+            <line x1={x} x2={x} y1={sy(c.h)} y2={sy(c.l)} stroke={color} strokeWidth={1} />
+            <rect
+              x={x - bw / 2}
+              y={bodyTop}
+              width={bw}
+              height={Math.max(bodyBot - bodyTop, 1)}
+              fill={color}
+            />
+          </g>
+        );
+      })}
+      {hover !== null && candles[hover] && (
+        <g>
+          <line x1={sx(hover)} x2={sx(hover)} y1={pad.t} y2={height - pad.b} stroke={MUTED} strokeWidth={1} strokeDasharray="2 2" />
+          <text x={Math.min(sx(hover) + 6, width - 190)} y={pad.t + 12} fontSize={10} fill="var(--color-ink-100)" className="figure">
+            {fmt.date(candles[hover].t)} · O {fmt.num(candles[hover].o, 2)} H {fmt.num(candles[hover].h, 2)} L{" "}
+            {fmt.num(candles[hover].l, 2)} C {fmt.num(candles[hover].c, 2)}
+          </text>
+        </g>
+      )}
+    </svg>
+  );
+}
+
 /** Walk-forward fold timeline: the signature element. Train bars in ink,
  * validation in amber; the reserved holdout burns red at the end. */
 export function FoldTimeline({

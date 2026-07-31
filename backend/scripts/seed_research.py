@@ -2,9 +2,19 @@
 one experiment each. Gives the terminal real content on first open.
 
 Run from backend/:  python scripts/seed_research.py
+
+Roots resolve the same way the API does (app/api/v1/research.py):
+  EDGELAB_DATA_ROOT       (default "data/store", shared across users)
+  EDGELAB_RESEARCH_ROOT   (default "research_data", per-user)
+  EDGELAB_SEED_USER_ID    (default "dev-local", the AUTH_DISABLED dev user —
+                           pass a real Supabase user id to seed experiments
+                           visible to that user in a deployed environment)
+Both are resolved relative to the current working directory, exactly like
+the running API process, so run this from the same directory as uvicorn.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -25,9 +35,9 @@ from engine.strategies.examples import (
 from research.pipeline import run_experiment
 from research.store import ExperimentStore
 
-ROOT = Path(__file__).resolve().parent.parent
-DATA_ROOT = ROOT / "data" / "store"
-RESEARCH_ROOT = ROOT / "research_data"
+DATA_ROOT = Path(os.environ.get("EDGELAB_DATA_ROOT", "data/store"))
+SEED_USER_ID = os.environ.get("EDGELAB_SEED_USER_ID", "dev-local")
+RESEARCH_ROOT = Path(os.environ.get("EDGELAB_RESEARCH_ROOT", "research_data")) / SEED_USER_ID
 
 
 def synth(symbol: str, n: int, seed: int, drift: float, vol: float,
