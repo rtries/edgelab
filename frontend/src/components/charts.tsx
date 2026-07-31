@@ -388,7 +388,7 @@ export function MonthlyGrid({ rows }: { rows: { year: number; month: number; val
 
 /** OHLC candlestick chart with optional buy-zone / stop / target overlays —
  * the "TradingView-style" price panel for the Markets page. */
-export type Candle = { t: string; o: number; h: number; l: number; c: number };
+export type Candle = { t: string; o: number; h: number; l: number; c: number; v?: number };
 
 export function CandlestickChart({
   candles,
@@ -486,6 +486,39 @@ export function CandlestickChart({
           </text>
         </g>
       )}
+    </svg>
+  );
+}
+
+/** Volume bars beneath a candlestick chart — same x-scale, green/red by
+ * whether that bar's close was up or down. */
+export function VolumeChart({ candles, height = 70 }: { candles: Candle[]; height?: number }) {
+  const width = 900;
+  const pad = { l: 56, r: 8, t: 2, b: 4 };
+  const volumes = candles.map((c) => c.v ?? 0);
+  const maxV = Math.max(...volumes, 1);
+  const sx = scale([0, Math.max(candles.length - 1, 1)], [pad.l, width - pad.r]);
+  const bw = Math.max(((width - pad.l - pad.r) / candles.length) * 0.6, 1);
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img">
+      <text x={pad.l - 6} y={pad.t + 8} textAnchor="end" fontSize={9} fill={MUTED} className="figure">
+        {maxV >= 1_000_000 ? `${(maxV / 1_000_000).toFixed(1)}M` : fmt.num(maxV, 0)}
+      </text>
+      {candles.map((c, i) => {
+        const up = c.c >= c.o;
+        const barH = ((height - pad.t - pad.b) * (c.v ?? 0)) / maxV;
+        return (
+          <rect
+            key={c.t}
+            x={sx(i) - bw / 2}
+            y={height - pad.b - barH}
+            width={bw}
+            height={barH}
+            fill={up ? GAIN : LOSS}
+            opacity={0.55}
+          />
+        );
+      })}
     </svg>
   );
 }

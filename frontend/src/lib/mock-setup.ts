@@ -57,7 +57,8 @@ export function buildCandles(symbol: string, n = 120): Candle[] {
     const low = Math.min(open, close) * (1 - rng() * 0.012);
     const t = new Date(start);
     t.setDate(t.getDate() + i);
-    candles.push({ t: t.toISOString(), o: open, h: high, l: low, c: close });
+    const v = Math.round(500_000 + rng() * 4_000_000);
+    candles.push({ t: t.toISOString(), o: open, h: high, l: low, c: close, v });
     price = close;
   }
   return candles;

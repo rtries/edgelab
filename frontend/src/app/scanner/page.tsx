@@ -140,7 +140,7 @@ export default function ScannerPage() {
               {filtered.map((r) => (
                 <tr key={r.symbol} className="border-b border-ink-800/50 last:border-0 hover:bg-ink-800/30">
                   <td className="figure py-1.5 pr-4">
-                    <Link href={`/markets?symbol=${r.symbol}`} className="text-amber-signal hover:underline">
+                    <Link href={`/stock/${r.symbol}`} className="text-amber-signal hover:underline">
                       {r.symbol}
                     </Link>
                   </td>
