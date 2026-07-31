@@ -300,9 +300,15 @@ async function post<T>(path: string, body: unknown = {}): Promise<T> {
   return res.json();
 }
 
+export type MarketBar = { t: string; o: number; h: number; l: number; c: number; v: number };
+
 export const api = {
   base: BASE,
   strategies: () => get<StrategyInfo[]>("/api/v1/research/strategies"),
+  marketBars: (symbol: string, timeframe = "1Day", limit = 120) =>
+    get<MarketBar[]>(
+      `/api/v1/market/bars?${new URLSearchParams({ symbol, timeframe, limit: String(limit) })}`,
+    ),
   experiments: (params: Record<string, string> = {}) => {
     const qs = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v !== ""),

@@ -1,14 +1,18 @@
 "use client";
 /** Markets: symbol chart + AI-generated trade setup.
  *
- * Placeholder price data and setup scoring live in @/lib/mock-setup —
- * see the TODO(backend) notes there for what a real integration swaps in.
+ * Price bars are real (fetched from Alpaca's market data via the
+ * backend, api.marketBars) with a fallback to the placeholder generator
+ * in @/lib/mock-setup if the fetch fails (e.g. no Alpaca keys configured
+ * locally). Setup scoring (confidence/zone/stop/target) is still
+ * placeholder either way — see the TODO(backend) note in mock-setup.ts.
  */
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import type { Candle } from "@/components/charts";
 import { CandlestickChart } from "@/components/charts";
 import { ConfidenceStamp, Panel, Stat } from "@/components/ui";
-import { fmt } from "@/lib/api";
+import { api, fmt } from "@/lib/api";
 import { SCAN_UNIVERSE, buildCandles, buildSetup, riskReward } from "@/lib/mock-setup";
 
 function MarketsInner() {
@@ -19,8 +23,31 @@ function MarketsInner() {
 
   const [symbol, setSymbol] = useState<string>(initial);
   const [whyOpen, setWhyOpen] = useState(true);
+  const [candles, setCandles] = useState<Candle[]>(() => buildCandles(initial));
+  const [isLive, setIsLive] = useState(false);
+  const [dataError, setDataError] = useState<string | null>(null);
 
-  const candles = useMemo(() => buildCandles(symbol), [symbol]);
+  useEffect(() => {
+    let cancelled = false;
+    setDataError(null);
+    api
+      .marketBars(symbol)
+      .then((bars) => {
+        if (cancelled) return;
+        setCandles(bars.map((b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c })));
+        setIsLive(true);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setCandles(buildCandles(symbol));
+        setIsLive(false);
+        setDataError(String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol]);
+
   const setup = useMemo(() => buildSetup(symbol, candles), [symbol, candles]);
   const rr = riskReward(setup);
 
@@ -28,9 +55,19 @@ function MarketsInner() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg tracking-wide">Markets</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg tracking-wide">Markets</h1>
+            <span
+              className={`rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-widest ${
+                isLive ? "border-gain text-gain" : "border-ink-800 text-ink-400"
+              }`}
+              title={dataError ?? undefined}
+            >
+              {isLive ? "live prices · alpaca" : "placeholder prices"}
+            </span>
+          </div>
           <p className="text-xs text-ink-400">
-            Placeholder price data and AI setup scoring — see TODOs in lib/mock-setup.ts for the real endpoints to wire up.
+            AI setup scoring (confidence/zone/stop/target) is still placeholder — see TODOs in lib/mock-setup.ts.
           </p>
         </div>
         <div className="flex flex-wrap gap-1">
