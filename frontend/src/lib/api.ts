@@ -302,9 +302,30 @@ async function post<T>(path: string, body: unknown = {}): Promise<T> {
 
 export type MarketBar = { t: string; o: number; h: number; l: number; c: number; v: number };
 
+export type PaperOrderRequest = {
+  symbol: string;
+  side: "buy" | "sell";
+  qty: number;
+  order_type: "market" | "limit";
+  limit_price?: number;
+};
+
+export type PaperOrder = {
+  id: string;
+  symbol: string;
+  side: string;
+  qty: string;
+  type: string;
+  status: string;
+  filled_avg_price: string | null;
+  submitted_at: string;
+};
+
 export const api = {
   base: BASE,
   strategies: () => get<StrategyInfo[]>("/api/v1/research/strategies"),
+  submitPaperOrder: (req: PaperOrderRequest) => post<PaperOrder>("/api/v1/market/paper-order", req),
+  paperOrders: (limit = 20) => get<PaperOrder[]>(`/api/v1/market/paper-orders?limit=${limit}`),
   marketBars: (symbol: string, timeframe = "1Day", limit = 120) =>
     get<MarketBar[]>(
       `/api/v1/market/bars?${new URLSearchParams({ symbol, timeframe, limit: String(limit) })}`,

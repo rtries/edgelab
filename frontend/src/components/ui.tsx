@@ -183,6 +183,7 @@ const NAV: { href: string; label: string }[] = [
   { href: "/", label: "Dashboard" },
   { href: "/scanner", label: "Scanner" },
   { href: "/markets", label: "Markets" },
+  { href: "/trading", label: "Trading" },
   { href: "/morning", label: "Morning Brief" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/strategies", label: "Strategies" },

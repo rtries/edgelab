@@ -2,16 +2,20 @@
 /** Scanner: runs the AI setup scoring across a symbol universe and ranks
  * by confidence — "find me the best setups right now."
  *
- * TODO(backend): SCAN_UNIVERSE is a hardcoded placeholder list. Replace
- * with the user's real watchlist (once one exists) or a broader
- * screenable universe from a market-data provider. The per-symbol
- * scoring itself is the same placeholder used by the Markets page —
- * see @/lib/mock-setup for the TODO(backend) notes on that.
+ * Prices are real (fetched once per symbol from Alpaca via
+ * api.marketBars, per-symbol fallback to placeholder on failure). The
+ * setup scoring layered on top re-runs every 30s but is still
+ * placeholder — see @/lib/mock-setup TODOs. SCAN_UNIVERSE itself is
+ * still a hardcoded 15-symbol list.
+ *
+ * TODO(backend): replace SCAN_UNIVERSE with the user's real watchlist
+ * or a broader screenable universe once a screening endpoint exists.
  */
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import type { Candle } from "@/components/charts";
 import { ConfidenceStamp, Panel } from "@/components/ui";
-import { fmt } from "@/lib/api";
+import { api, fmt } from "@/lib/api";
 import { SCAN_UNIVERSE, buildCandles, buildSetup, riskReward, type Setup } from "@/lib/mock-setup";
 
 const RESCAN_INTERVAL_MS = 30_000;
@@ -19,15 +23,9 @@ const RESCAN_INTERVAL_MS = 30_000;
 type Row = {
   symbol: string;
   price: number;
+  isLive: boolean;
   setup: Setup;
   rr: number;
-};
-
-const CONFIDENCE_ORDER: Record<Setup["confidenceLevel"], number> = {
-  strong: 3,
-  moderate: 2,
-  weak: 1,
-  insufficient: 0,
 };
 
 type SortKey = "confidence" | "rr" | "symbol";
@@ -37,24 +35,64 @@ export default function ScannerPage() {
   const [sortKey, setSortKey] = useState<SortKey>("confidence");
   const [nonce, setNonce] = useState(0);
   const [lastScanned, setLastScanned] = useState<Date | null>(null);
+  const [candlesBySymbol, setCandlesBySymbol] = useState<Record<string, Candle[]>>({});
+  const [liveBySymbol, setLiveBySymbol] = useState<Record<string, boolean>>({});
+  const [loadingPrices, setLoadingPrices] = useState(true);
 
   useEffect(() => {
-    const rescan = () => {
+    let cancelled = false;
+    setLoadingPrices(true);
+    Promise.all(
+      SCAN_UNIVERSE.map((symbol) =>
+        api
+          .marketBars(symbol)
+          .then((bars) => ({
+            symbol,
+            live: true,
+            candles: bars.map((b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v })),
+          }))
+          .catch(() => ({ symbol, live: false, candles: buildCandles(symbol) })),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      const candles: Record<string, Candle[]> = {};
+      const live: Record<string, boolean> = {};
+      for (const r of results) {
+        candles[r.symbol] = r.candles;
+        live[r.symbol] = r.live;
+      }
+      setCandlesBySymbol(candles);
+      setLiveBySymbol(live);
+      setLoadingPrices(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const rescore = () => {
       setNonce((n) => n + 1);
       setLastScanned(new Date());
     };
-    rescan();
-    const id = setInterval(rescan, RESCAN_INTERVAL_MS);
+    rescore();
+    const id = setInterval(rescore, RESCAN_INTERVAL_MS);
     return () => clearInterval(id);
   }, []);
 
   const rows: Row[] = useMemo(() => {
     return SCAN_UNIVERSE.map((symbol) => {
-      const candles = buildCandles(symbol);
+      const candles = candlesBySymbol[symbol] ?? buildCandles(symbol);
       const setup = buildSetup(symbol, candles, nonce);
-      return { symbol, price: candles[candles.length - 1].c, setup, rr: riskReward(setup) };
+      return {
+        symbol,
+        price: candles[candles.length - 1].c,
+        isLive: liveBySymbol[symbol] ?? false,
+        setup,
+        rr: riskReward(setup),
+      };
     });
-  }, [nonce]);
+  }, [candlesBySymbol, liveBySymbol, nonce]);
 
   const filtered = rows
     .filter((r) => biasFilter === "all" || r.setup.bias === biasFilter)
@@ -70,13 +108,13 @@ export default function ScannerPage() {
         <div>
           <h1 className="text-lg tracking-wide">Scanner</h1>
           <p className="text-xs text-ink-400">
-            Ranks a placeholder symbol universe by AI setup confidence — see TODOs in this page and lib/mock-setup.ts
-            for the real screening/scoring endpoints to wire up.
+            Real prices, placeholder AI setup scoring — see TODOs in this page and lib/mock-setup.ts for the real
+            screening/scoring endpoints to wire up.
           </p>
         </div>
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-ink-400">
           <span>
-            rescans every {RESCAN_INTERVAL_MS / 1000}s
+            re-scores every {RESCAN_INTERVAL_MS / 1000}s · prices fetched once on load
             {lastScanned && <> · last scan {fmt.time(lastScanned.toISOString())}</>}
           </span>
           <button
@@ -119,6 +157,7 @@ export default function ScannerPage() {
             <option value="symbol">symbol</option>
           </select>
         </div>
+        {loadingPrices && <span className="figure animate-pulse text-xs text-ink-400">loading prices…</span>}
       </div>
 
       <Panel title={`${filtered.length} setups`}>
@@ -144,7 +183,12 @@ export default function ScannerPage() {
                       {r.symbol}
                     </Link>
                   </td>
-                  <td className="figure py-1.5 pr-4">{fmt.num(r.price, 2)}</td>
+                  <td className="figure py-1.5 pr-4">
+                    <span title={r.isLive ? "live · alpaca" : "placeholder — fetch failed"}>
+                      {fmt.num(r.price, 2)}
+                      {!r.isLive && <span className="ml-1 text-ink-400">~</span>}
+                    </span>
+                  </td>
                   <td className="py-1.5 pr-4">
                     <div className="flex items-center gap-2">
                       <ConfidenceStamp level={r.setup.confidenceLevel} size="sm" />
@@ -165,6 +209,7 @@ export default function ScannerPage() {
             </tbody>
           </table>
         </div>
+        <p className="mt-2 text-[10px] text-ink-400">~ next to a price means the live fetch failed and it&apos;s a placeholder.</p>
       </Panel>
     </div>
   );
