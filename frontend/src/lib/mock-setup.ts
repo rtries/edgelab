@@ -64,8 +64,11 @@ export function buildCandles(symbol: string, n = 120): Candle[] {
 }
 
 // TODO(backend): replace with a real setup-scoring endpoint response.
-export function buildSetup(symbol: string, candles: Candle[]): Setup {
-  const rng = mulberry32(seedFromSymbol(symbol) ^ 0x9e3779b9);
+// `nonce` lets a caller (e.g. Scanner's auto-refresh) get a fresh-looking
+// score for the same symbol without touching its price history — a stand-in
+// for what would be a genuinely new model run each scan cycle.
+export function buildSetup(symbol: string, candles: Candle[], nonce = 0): Setup {
+  const rng = mulberry32((seedFromSymbol(symbol) ^ 0x9e3779b9) + nonce);
   const last = candles[candles.length - 1].c;
   const confidence = 0.35 + rng() * 0.6;
   const confidenceLevel: Setup["confidenceLevel"] =

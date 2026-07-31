@@ -8,11 +8,13 @@
  * scoring itself is the same placeholder used by the Markets page —
  * see @/lib/mock-setup for the TODO(backend) notes on that.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ConfidenceStamp, Panel } from "@/components/ui";
 import { fmt } from "@/lib/api";
 import { SCAN_UNIVERSE, buildCandles, buildSetup, riskReward, type Setup } from "@/lib/mock-setup";
+
+const RESCAN_INTERVAL_MS = 30_000;
 
 type Row = {
   symbol: string;
@@ -33,14 +35,26 @@ type SortKey = "confidence" | "rr" | "symbol";
 export default function ScannerPage() {
   const [biasFilter, setBiasFilter] = useState<"all" | "long" | "short">("all");
   const [sortKey, setSortKey] = useState<SortKey>("confidence");
+  const [nonce, setNonce] = useState(0);
+  const [lastScanned, setLastScanned] = useState<Date | null>(null);
+
+  useEffect(() => {
+    const rescan = () => {
+      setNonce((n) => n + 1);
+      setLastScanned(new Date());
+    };
+    rescan();
+    const id = setInterval(rescan, RESCAN_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
 
   const rows: Row[] = useMemo(() => {
     return SCAN_UNIVERSE.map((symbol) => {
       const candles = buildCandles(symbol);
-      const setup = buildSetup(symbol, candles);
+      const setup = buildSetup(symbol, candles, nonce);
       return { symbol, price: candles[candles.length - 1].c, setup, rr: riskReward(setup) };
     });
-  }, []);
+  }, [nonce]);
 
   const filtered = rows
     .filter((r) => biasFilter === "all" || r.setup.bias === biasFilter)
@@ -52,12 +66,29 @@ export default function ScannerPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-lg tracking-wide">Scanner</h1>
-        <p className="text-xs text-ink-400">
-          Ranks a placeholder symbol universe by AI setup confidence — see TODOs in this page and lib/mock-setup.ts
-          for the real screening/scoring endpoints to wire up.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg tracking-wide">Scanner</h1>
+          <p className="text-xs text-ink-400">
+            Ranks a placeholder symbol universe by AI setup confidence — see TODOs in this page and lib/mock-setup.ts
+            for the real screening/scoring endpoints to wire up.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-ink-400">
+          <span>
+            rescans every {RESCAN_INTERVAL_MS / 1000}s
+            {lastScanned && <> · last scan {fmt.time(lastScanned.toISOString())}</>}
+          </span>
+          <button
+            onClick={() => {
+              setNonce((n) => n + 1);
+              setLastScanned(new Date());
+            }}
+            className="rounded border border-ink-800 px-2 py-1 text-ink-100 hover:border-amber-signal hover:text-amber-signal"
+          >
+            rescan now
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
