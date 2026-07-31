@@ -60,9 +60,13 @@ def get_bars(
             status_code=500,
             detail="ALPACA_API_KEY / ALPACA_API_SECRET are not configured",
         )
+    # Alpaca returns bars ascending from `start`, so a plain `limit` cuts
+    # off the OLDEST bars in [start, now] rather than the most recent —
+    # sort=desc gets the most recent `limit` bars instead; reversed below
+    # back into ascending order for charting.
     start = (datetime.now(UTC) - timedelta(days=max(limit * 3, 400))).strftime("%Y-%m-%d")
     qs = urllib.parse.urlencode(
-        {"timeframe": timeframe, "start": start, "limit": limit, "feed": "iex", "adjustment": "raw"}
+        {"timeframe": timeframe, "start": start, "limit": limit, "feed": "iex", "adjustment": "raw", "sort": "desc"}
     )
     url = f"{DATA_BASE_URL}/v2/stocks/{symbol.upper()}/bars?{qs}"
     req = urllib.request.Request(
@@ -87,6 +91,7 @@ def get_bars(
             status_code=404,
             detail=f"no bars returned for {symbol} — check the symbol is valid and markets have traded recently",
         )
+    bars.reverse()  # sort=desc above; charts want ascending chronological order
     return [Bar(t=b["t"], o=b["o"], h=b["h"], l=b["l"], c=b["c"], v=b["v"]) for b in bars]
 
 
