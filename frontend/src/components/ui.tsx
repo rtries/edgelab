@@ -7,6 +7,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
+import { FeedbackButton } from "@/components/feedback-button";
 
 export function Panel({
   title,
@@ -75,6 +76,19 @@ export function ConfidenceStamp({ level, size = "md" }: { level: string | null |
       }`}
     >
       {level}
+    </span>
+  );
+}
+
+/** Marks any placeholder AI output — never let a mocked number pass as
+ * real analysis without this attached right next to it. */
+export function PreviewBadge({ className = "" }: { className?: string }) {
+  return (
+    <span
+      className={`figure inline-flex cursor-help items-center gap-1 rounded border border-amber-signal/60 px-1.5 py-0.5 text-[9px] uppercase tracking-widest text-amber-signal ${className}`}
+      title="This analysis is currently generated using placeholder logic while the production scoring engine is integrated."
+    >
+      preview analysis
     </span>
   );
 }
@@ -235,6 +249,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <ShellFooter />
       </aside>
       <main className="min-w-0 flex-1 p-4">{children}</main>
+      <FeedbackButton />
     </div>
   );
 }

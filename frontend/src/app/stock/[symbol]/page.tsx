@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Candle } from "@/components/charts";
 import { CandlestickChart, VolumeChart } from "@/components/charts";
-import { ConfidenceStamp, Panel, Stat, Tabs } from "@/components/ui";
+import { ConfidenceStamp, Panel, PreviewBadge, Stat, Tabs } from "@/components/ui";
 import { api, fmt } from "@/lib/api";
 import { buildCandles, buildSetup, riskReward } from "@/lib/mock-setup";
 import { SymbolSearch } from "@/components/symbol-search";
@@ -174,12 +174,15 @@ export default function StockPage() {
             <Panel
               title="Why this setup?"
               right={
-                <button
-                  onClick={() => setWhyOpen((v) => !v)}
-                  className="text-[10px] uppercase tracking-widest text-ink-400 hover:text-amber-signal"
-                >
-                  {whyOpen ? "collapse" : "expand"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <PreviewBadge />
+                  <button
+                    onClick={() => setWhyOpen((v) => !v)}
+                    className="text-[10px] uppercase tracking-widest text-ink-400 hover:text-amber-signal"
+                  >
+                    {whyOpen ? "collapse" : "expand"}
+                  </button>
+                </div>
               }
             >
               {whyOpen ? (
@@ -198,7 +201,7 @@ export default function StockPage() {
           </div>
 
           <div className="space-y-4">
-            <Panel title="AI Setup">
+            <Panel title="AI Setup" right={<PreviewBadge />}>
               <div className="space-y-3">
                 <div>
                   <div className="mb-1 text-[10px] uppercase tracking-widest text-ink-400">

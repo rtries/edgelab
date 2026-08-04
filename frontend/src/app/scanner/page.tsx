@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Candle } from "@/components/charts";
-import { ConfidenceStamp, Panel } from "@/components/ui";
+import { ConfidenceStamp, Panel, PreviewBadge } from "@/components/ui";
 import { api, fmt } from "@/lib/api";
 import { SCAN_UNIVERSE, buildCandles, buildSetup, riskReward, type Setup } from "@/lib/mock-setup";
 
@@ -160,7 +160,7 @@ export default function ScannerPage() {
         {loadingPrices && <span className="figure animate-pulse text-xs text-ink-400">loading prices…</span>}
       </div>
 
-      <Panel title={`${filtered.length} setups`}>
+      <Panel title={`${filtered.length} setups`} right={<PreviewBadge />}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

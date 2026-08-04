@@ -321,9 +321,21 @@ export type PaperOrder = {
   submitted_at: string;
 };
 
+export type FeedbackCategory = "bug" | "confusing_ui" | "missing_feature" | "suggestion" | "general";
+
+export type FeedbackRequest = {
+  category: FeedbackCategory;
+  message: string;
+  page: string;
+  symbol?: string;
+  browser?: string;
+  client_timestamp?: string;
+};
+
 export const api = {
   base: BASE,
   strategies: () => get<StrategyInfo[]>("/api/v1/research/strategies"),
+  submitFeedback: (req: FeedbackRequest) => post<{ id: string }>("/api/v1/feedback", req),
   submitPaperOrder: (req: PaperOrderRequest) => post<PaperOrder>("/api/v1/market/paper-order", req),
   paperOrders: (limit = 20) => get<PaperOrder[]>(`/api/v1/market/paper-orders?limit=${limit}`),
   marketBars: (symbol: string, timeframe = "1Day", limit = 120) =>
