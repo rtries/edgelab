@@ -18,6 +18,7 @@ export default function TradingPage() {
   const [lastPrice, setLastPrice] = useState<number | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
 
+  const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<PaperOrder | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +62,13 @@ export default function TradingPage() {
   const refPrice = orderType === "limit" ? Number(limitPrice) || lastPrice : lastPrice;
   const estimatedCost = refPrice != null ? refPrice * qtyNum : null;
 
+  // Any change to the order after review starts invalidates the review —
+  // never submit an order the tester didn't actually confirm.
+  useEffect(() => {
+    setConfirming(false);
+    setResult(null);
+  }, [symbol, side, qty, orderType, limitPrice]);
+
   async function submit() {
     setSubmitting(true);
     setError(null);
@@ -74,6 +82,7 @@ export default function TradingPage() {
         limit_price: orderType === "limit" ? Number(limitPrice) : undefined,
       });
       setResult(order);
+      setConfirming(false);
       refreshOrders();
     } catch (e) {
       setError(String(e));
@@ -182,15 +191,47 @@ export default function TradingPage() {
               )}
             </div>
 
-            <button
-              disabled={!canSubmit}
-              onClick={submit}
-              className={`w-full rounded border py-2 text-xs uppercase tracking-widest transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                side === "buy" ? "border-gain text-gain hover:bg-gain/10" : "border-loss text-loss hover:bg-loss/10"
-              }`}
-            >
-              {submitting ? "submitting…" : `${side} ${qtyNum || 0} ${symbol} · paper`}
-            </button>
+            {!confirming ? (
+              <button
+                disabled={!canSubmit}
+                onClick={() => setConfirming(true)}
+                className={`w-full rounded border py-2 text-xs uppercase tracking-widest transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                  side === "buy" ? "border-gain text-gain hover:bg-gain/10" : "border-loss text-loss hover:bg-loss/10"
+                }`}
+              >
+                review {side} {qtyNum || 0} {symbol}
+              </button>
+            ) : (
+              <div className="space-y-2 rounded border border-amber-signal/60 bg-amber-signal/5 p-3">
+                <div className="text-[10px] uppercase tracking-widest text-amber-signal">confirm order</div>
+                <div className="figure text-sm text-ink-100">
+                  {side} {qtyNum} {symbol} · {orderType}
+                  {orderType === "limit" && <> @ {fmt.num(Number(limitPrice), 2)}</>} · paper
+                </div>
+                <div className="figure text-xs text-ink-400">
+                  est. cost {estimatedCost != null ? fmt.num(estimatedCost, 2) : "—"}
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => setConfirming(false)}
+                    className="flex-1 rounded border border-ink-800 py-1.5 text-xs uppercase tracking-widest text-ink-100 hover:border-ink-400"
+                  >
+                    back
+                  </button>
+                  <button
+                    disabled={submitting}
+                    onClick={submit}
+                    className={`flex-1 rounded border py-1.5 text-xs uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-40 ${
+                      side === "buy"
+                        ? "border-gain bg-gain/10 text-gain hover:bg-gain/20"
+                        : "border-loss bg-loss/10 text-loss hover:bg-loss/20"
+                    }`}
+                  >
+                    {submitting ? "submitting…" : "confirm & submit"}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {error && <ErrorBox error={error} />}
             {result && (

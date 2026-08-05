@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
 import { FeedbackButton } from "@/components/feedback-button";
 
@@ -183,23 +183,29 @@ export function Loading({ label = "loading" }: { label?: string }) {
 export function ErrorBox({ error }: { error: string }) {
   return (
     <div className="rounded border border-loss/50 bg-loss/10 p-4 text-sm">
-      <div className="mb-1 font-medium text-loss">Couldn&apos;t reach the research API</div>
+      <div className="mb-1 font-medium text-loss">Couldn&apos;t reach the server</div>
       <div className="figure text-xs text-ink-400">{error}</div>
       <div className="mt-2 text-xs text-ink-400">
-        Start it with <span className="figure text-ink-100">make api</span> and seed data with{" "}
-        <span className="figure text-ink-100">python scripts/seed_research.py</span>.
+        This is usually temporary — try refreshing in a moment. If it keeps happening, send feedback with the
+        button in the corner.
       </div>
     </div>
   );
 }
 
-const NAV: { href: string; label: string }[] = [
+// A short, always-visible list plus a collapsible "Research Lab" group —
+// the quant-research pages are real and stay one click away, but a new
+// user's first impression is a trading app, not a research console.
+const PRIMARY_NAV: { href: string; label: string }[] = [
   { href: "/", label: "Dashboard" },
   { href: "/scanner", label: "Scanner" },
   { href: "/markets", label: "Markets" },
   { href: "/trading", label: "Trading" },
-  { href: "/morning", label: "Morning Brief" },
   { href: "/portfolio", label: "Portfolio" },
+  { href: "/morning", label: "Morning Brief" },
+];
+
+const RESEARCH_NAV: { href: string; label: string }[] = [
   { href: "/strategies", label: "Strategies" },
   { href: "/experiments", label: "Experiments" },
   { href: "/compare", label: "Compare" },
@@ -217,34 +223,54 @@ const NAV: { href: string; label: string }[] = [
   { href: "/notes", label: "Notes" },
 ];
 
+function NavLink({ href, label, pathname }: { href: string; label: string; pathname: string }) {
+  const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+  return (
+    <Link
+      href={href}
+      className={`block px-4 py-1.5 text-xs uppercase tracking-widest transition-colors ${
+        active
+          ? "border-l-2 border-amber-signal bg-ink-900 text-amber-signal"
+          : "border-l-2 border-transparent text-ink-400 hover:text-ink-100"
+      }`}
+    >
+      {label}
+    </Link>
+  );
+}
+
 export function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const researchActive = RESEARCH_NAV.some((item) => pathname.startsWith(item.href));
+  const [researchOpen, setResearchOpen] = useState(researchActive);
+  // Once a tester is inside a research page, keep the group open even if
+  // they haven't manually expanded it.
+  const showResearch = researchOpen || researchActive;
+
   return (
     <div className="flex min-h-screen">
       <aside className="sticky top-0 flex h-screen w-44 shrink-0 flex-col border-r border-ink-800 bg-ink-950">
         <Link href="/" className="block border-b border-ink-800 px-4 py-3">
           <span className="figure text-sm tracking-widest text-amber-signal">EDGE</span>
           <span className="figure text-sm tracking-widest text-ink-100">LAB</span>
-          <div className="text-[9px] uppercase tracking-widest text-ink-400">research terminal</div>
+          <div className="text-[9px] uppercase tracking-widest text-ink-400">trading platform</div>
         </Link>
         <nav className="flex-1 overflow-y-auto py-2">
-          {NAV.map((item) => {
-            const active =
-              item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`block px-4 py-1.5 text-xs uppercase tracking-widest transition-colors ${
-                  active
-                    ? "border-l-2 border-amber-signal bg-ink-900 text-amber-signal"
-                    : "border-l-2 border-transparent text-ink-400 hover:text-ink-100"
-                }`}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
+          {PRIMARY_NAV.map((item) => (
+            <NavLink key={item.href} href={item.href} label={item.label} pathname={pathname} />
+          ))}
+
+          <button
+            onClick={() => setResearchOpen((v) => !v)}
+            className="mt-2 flex w-full items-center justify-between border-l-2 border-transparent px-4 py-1.5 text-[10px] uppercase tracking-widest text-ink-400 hover:text-ink-100"
+          >
+            <span>Research Lab</span>
+            <span>{showResearch ? "−" : "+"}</span>
+          </button>
+          {showResearch &&
+            RESEARCH_NAV.map((item) => (
+              <NavLink key={item.href} href={item.href} label={item.label} pathname={pathname} />
+            ))}
         </nav>
         <ShellFooter />
       </aside>
