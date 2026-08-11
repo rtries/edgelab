@@ -495,6 +495,28 @@ export const api = {
   morning: () => get<MorningDashboard>("/api/v1/ops/morning"),
 };
 
+/** Runs `fn` over `items` with at most `limit` in flight at once.
+ * The backend is a single tiny (0.1 vCPU) instance — a page that wants
+ * data for a whole watchlist should not fire it all in one burst; this
+ * keeps concurrent connections bounded regardless of how many items
+ * there are. */
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 export const fmt = {
   num: (v: number | null | undefined, digits = 2): string =>
     v === null || v === undefined || Number.isNaN(v) ? "—" : v.toFixed(digits),

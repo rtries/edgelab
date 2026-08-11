@@ -18,7 +18,7 @@ import { CandlestickChart, VolumeChart } from "@/components/charts";
 import { ConfidenceStamp, ErrorBox, Panel, PreviewBadge, Stat } from "@/components/ui";
 import { Term } from "@/components/glossary";
 import { SymbolSearch } from "@/components/symbol-search";
-import { api, fmt, type Decision, type PaperOrder, type PaperPosition } from "@/lib/api";
+import { api, fmt, mapWithConcurrency, type Decision, type PaperOrder, type PaperPosition } from "@/lib/api";
 import { SCAN_UNIVERSE, buildCandles, buildSetup } from "@/lib/mock-setup";
 
 const TIMEFRAMES: { label: string; timeframe: string; limit: number }[] = [
@@ -104,23 +104,25 @@ export default function SessionPage() {
     };
   }, [symbol]);
 
-  // --- watchlist (fetched once — real prices, cheap placeholder change%) ---
+  // --- watchlist (fetched once — real prices, cheap placeholder change%).
+  // Capped at 4 concurrent requests: the backend is a single tiny
+  // instance, and this page already fires chart+decision+positions
+  // calls alongside it — an uncapped 15-wide burst on top of those was
+  // enough to trip transient connection failures on load.
   useEffect(() => {
     let cancelled = false;
-    Promise.all(
-      SCAN_UNIVERSE.map((s) =>
-        api
-          .marketBars(s, "1Day", 2)
-          .then((bars) => {
-            const last = bars[bars.length - 1];
-            const prev = bars[bars.length - 2] ?? last;
-            return { symbol: s, price: last.c, changePct: prev.c ? (last.c - prev.c) / prev.c : 0, isLive: true };
-          })
-          .catch(() => {
-            const c = buildCandles(s, 2);
-            return { symbol: s, price: c[1].c, changePct: 0, isLive: false };
-          }),
-      ),
+    mapWithConcurrency(SCAN_UNIVERSE as unknown as string[], 4, (s) =>
+      api
+        .marketBars(s, "1Day", 2)
+        .then((bars) => {
+          const last = bars[bars.length - 1];
+          const prev = bars[bars.length - 2] ?? last;
+          return { symbol: s, price: last.c, changePct: prev.c ? (last.c - prev.c) / prev.c : 0, isLive: true };
+        })
+        .catch(() => {
+          const c = buildCandles(s, 2);
+          return { symbol: s, price: c[1].c, changePct: 0, isLive: false };
+        }),
     ).then((rows) => {
       if (!cancelled) {
         setWatchlist(rows);

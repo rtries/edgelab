@@ -15,7 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Candle } from "@/components/charts";
 import { ConfidenceStamp, Panel, PreviewBadge } from "@/components/ui";
-import { api, fmt } from "@/lib/api";
+import { api, fmt, mapWithConcurrency } from "@/lib/api";
 import { SCAN_UNIVERSE, buildCandles, buildSetup, riskReward, type Setup } from "@/lib/mock-setup";
 
 const RESCAN_INTERVAL_MS = 30_000;
@@ -42,17 +42,15 @@ export default function ScannerPage() {
   useEffect(() => {
     let cancelled = false;
     setLoadingPrices(true);
-    Promise.all(
-      SCAN_UNIVERSE.map((symbol) =>
-        api
-          .marketBars(symbol)
-          .then((bars) => ({
-            symbol,
-            live: true,
-            candles: bars.map((b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v })),
-          }))
-          .catch(() => ({ symbol, live: false, candles: buildCandles(symbol) })),
-      ),
+    mapWithConcurrency(SCAN_UNIVERSE as unknown as string[], 4, (symbol) =>
+      api
+        .marketBars(symbol)
+        .then((bars) => ({
+          symbol,
+          live: true,
+          candles: bars.map((b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v })),
+        }))
+        .catch(() => ({ symbol, live: false, candles: buildCandles(symbol) })),
     ).then((results) => {
       if (cancelled) return;
       const candles: Record<string, Candle[]> = {};
