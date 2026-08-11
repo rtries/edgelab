@@ -302,12 +302,18 @@ async function post<T>(path: string, body: unknown = {}): Promise<T> {
 
 export type MarketBar = { t: string; o: number; h: number; l: number; c: number; v: number };
 
+export type PaperOrderType = "market" | "limit" | "stop" | "stop_limit" | "bracket";
+
 export type PaperOrderRequest = {
   symbol: string;
   side: "buy" | "sell";
   qty: number;
-  order_type: "market" | "limit";
+  order_type: PaperOrderType;
   limit_price?: number;
+  stop_price?: number;
+  bracket_entry_type?: "market" | "limit";
+  take_profit_price?: number;
+  stop_loss_price?: number;
 };
 
 export type PaperOrder = {

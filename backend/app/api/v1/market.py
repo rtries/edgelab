@@ -64,7 +64,15 @@ def get_bars(
     # off the OLDEST bars in [start, now] rather than the most recent —
     # sort=desc gets the most recent `limit` bars instead; reversed below
     # back into ascending order for charting.
-    start = (datetime.now(UTC) - timedelta(days=max(limit * 3, 400))).strftime("%Y-%m-%d")
+    #
+    # Intraday timeframes (Min/Hour) need their own lookback: the daily
+    # heuristic (limit*3 days) would ask for hundreds of days of minute
+    # bars for a "1D" chart. A handful of calendar days safely covers
+    # weekends/holidays while still bounding the request.
+    if timeframe.endswith("Min") or timeframe.endswith("Hour"):
+        start = (datetime.now(UTC) - timedelta(days=6)).strftime("%Y-%m-%d")
+    else:
+        start = (datetime.now(UTC) - timedelta(days=max(limit * 3, 400))).strftime("%Y-%m-%d")
     qs = urllib.parse.urlencode(
         {"timeframe": timeframe, "start": start, "limit": limit, "feed": "iex", "adjustment": "raw", "sort": "desc"}
     )
@@ -128,26 +136,59 @@ class PaperOrderRequest(BaseModel):
     symbol: str
     side: str = Field(pattern="^(buy|sell)$")
     qty: float = Field(gt=0)
-    order_type: str = Field(default="market", pattern="^(market|limit)$")
+    order_type: str = Field(default="market", pattern="^(market|limit|stop|stop_limit|bracket)$")
     limit_price: float | None = None
+    stop_price: float | None = None
+    # bracket-only: the entry order's own type (market or limit), plus the
+    # attached take-profit/stop-loss legs Alpaca submits as one order.
+    bracket_entry_type: str = Field(default="market", pattern="^(market|limit)$")
+    take_profit_price: float | None = None
+    stop_loss_price: float | None = None
     time_in_force: str = "day"
 
 
 @router.post("/market/paper-order")
 def submit_paper_order(req: PaperOrderRequest, user: AuthUser = CurrentUser) -> dict:
     """Places a real order in Alpaca's PAPER environment only — see the
-    module docstring for why this never touches live trading."""
+    module docstring for why this never touches live trading.
+
+    Supports market/limit/stop/stop_limit, plus bracket orders (entry +
+    attached take-profit and stop-loss legs, submitted to Alpaca as one
+    order via order_class=bracket) — the advanced-order priority list
+    from the product spec, all still paper-only."""
     if req.order_type == "limit" and req.limit_price is None:
         raise HTTPException(status_code=422, detail="limit_price is required for a limit order")
-    body = {
+    if req.order_type == "stop" and req.stop_price is None:
+        raise HTTPException(status_code=422, detail="stop_price is required for a stop order")
+    if req.order_type == "stop_limit" and (req.stop_price is None or req.limit_price is None):
+        raise HTTPException(status_code=422, detail="stop_price and limit_price are required for a stop-limit order")
+    if req.order_type == "bracket":
+        if req.take_profit_price is None or req.stop_loss_price is None:
+            raise HTTPException(
+                status_code=422, detail="take_profit_price and stop_loss_price are required for a bracket order"
+            )
+        if req.bracket_entry_type == "limit" and req.limit_price is None:
+            raise HTTPException(status_code=422, detail="limit_price is required for a limit-entry bracket order")
+
+    body: dict = {
         "symbol": req.symbol.upper(),
         "qty": str(req.qty),
         "side": req.side,
-        "type": req.order_type,
         "time_in_force": req.time_in_force,
     }
-    if req.limit_price is not None:
-        body["limit_price"] = str(req.limit_price)
+    if req.order_type == "bracket":
+        body["type"] = req.bracket_entry_type
+        body["order_class"] = "bracket"
+        body["take_profit"] = {"limit_price": str(req.take_profit_price)}
+        body["stop_loss"] = {"stop_price": str(req.stop_loss_price)}
+        if req.bracket_entry_type == "limit":
+            body["limit_price"] = str(req.limit_price)
+    else:
+        body["type"] = req.order_type
+        if req.limit_price is not None:
+            body["limit_price"] = str(req.limit_price)
+        if req.stop_price is not None:
+            body["stop_price"] = str(req.stop_price)
     return _alpaca_paper_request("POST", "/v2/orders", body)
 
 

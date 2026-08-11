@@ -23,10 +23,15 @@ import { CandlestickChart, VolumeChart } from "@/components/charts";
 import { ConfidenceStamp, ErrorBox, Panel, PreviewBadge, Stat } from "@/components/ui";
 import { Term } from "@/components/glossary";
 import { SymbolSearch } from "@/components/symbol-search";
-import { api, fmt, mapWithConcurrency, type Decision, type PaperOrder, type PaperPosition } from "@/lib/api";
+import { OrderTicket } from "@/components/order-ticket";
+import { api, fmt, mapWithConcurrency, type Decision, type PaperPosition } from "@/lib/api";
 import { SCAN_UNIVERSE, buildCandles, buildSetup } from "@/lib/mock-setup";
 
+// "1D" uses 1-minute bars and rides the same 30s poll as the Decision
+// panel — the closest this backend gets to real-time without a
+// streaming rewrite. ~390 bars covers a full 6.5h US session.
 const TIMEFRAMES: { label: string; timeframe: string; limit: number }[] = [
+  { label: "1D", timeframe: "1Min", limit: 390 },
   { label: "1M", timeframe: "1Day", limit: 22 },
   { label: "3M", timeframe: "1Day", limit: 65 },
   { label: "6M", timeframe: "1Day", limit: 130 },
@@ -69,7 +74,7 @@ function usePollTick(intervalMs: number) {
 
 export default function SessionPage() {
   const [symbol, setSymbol] = useState("AAPL");
-  const [range, setRange] = useState(TIMEFRAMES[2]); // 6M default — session view favors recent action
+  const [range, setRange] = useState(TIMEFRAMES[0]); // 1D default — this is the day-trading workspace
   const [candles, setCandles] = useState<Candle[]>(() => buildCandles(symbol));
   const [isLive, setIsLive] = useState(false);
   const [chartLoading, setChartLoading] = useState(true);
@@ -389,152 +394,5 @@ export default function SessionPage() {
         </Panel>
       </div>
     </div>
-  );
-}
-
-function OrderTicket({ symbol, lastPrice, onFilled }: { symbol: string; lastPrice: number; onFilled: () => void }) {
-  const [side, setSide] = useState<"buy" | "sell">("buy");
-  const [orderType, setOrderType] = useState<"market" | "limit">("market");
-  const [qty, setQty] = useState("1");
-  const [limitPrice, setLimitPrice] = useState("");
-  const [confirming, setConfirming] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<PaperOrder | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setConfirming(false);
-    setResult(null);
-  }, [symbol, side, qty, orderType, limitPrice]);
-
-  const qtyNum = Number(qty) || 0;
-  const refPrice = orderType === "limit" ? Number(limitPrice) || lastPrice : lastPrice;
-  const estimatedCost = refPrice != null ? refPrice * qtyNum : null;
-  const canSubmit = qtyNum > 0 && (orderType === "market" || Number(limitPrice) > 0) && !submitting;
-
-  async function submit() {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const order = await api.submitPaperOrder({
-        symbol,
-        side,
-        qty: qtyNum,
-        order_type: orderType,
-        limit_price: orderType === "limit" ? Number(limitPrice) : undefined,
-      });
-      setResult(order);
-      setConfirming(false);
-      onFilled();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Panel title={`Order · ${symbol}`}>
-      <div className="space-y-3">
-        <div className="flex gap-1">
-          {(["buy", "sell"] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setSide(s)}
-              className={`flex-1 rounded border py-1.5 text-xs uppercase tracking-widest transition-colors ${
-                side === s
-                  ? s === "buy"
-                    ? "border-gain text-gain"
-                    : "border-loss text-loss"
-                  : "border-ink-800 text-ink-400 hover:border-ink-400 hover:text-ink-100"
-              }`}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-1">
-          {(["market", "limit"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setOrderType(t)}
-              className={`flex-1 rounded border py-1.5 text-xs uppercase tracking-widest transition-colors ${
-                orderType === t
-                  ? "border-amber-signal text-amber-signal"
-                  : "border-ink-800 text-ink-400 hover:border-ink-400 hover:text-ink-100"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-        <input
-          type="number"
-          min="0"
-          step="1"
-          value={qty}
-          onChange={(e) => setQty(e.target.value)}
-          placeholder="quantity"
-          className="figure w-full rounded border border-ink-800 bg-ink-950 px-3 py-1.5 text-sm text-ink-100 focus:border-amber-signal focus:outline-none"
-        />
-        {orderType === "limit" && (
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={limitPrice}
-            onChange={(e) => setLimitPrice(e.target.value)}
-            placeholder={fmt.num(lastPrice, 2)}
-            className="figure w-full rounded border border-ink-800 bg-ink-950 px-3 py-1.5 text-sm text-ink-100 focus:border-amber-signal focus:outline-none"
-          />
-        )}
-        <div className="flex justify-between rounded border border-ink-800 bg-ink-950 px-3 py-2 text-xs text-ink-400">
-          <span>estimated value</span>
-          <span className="figure text-ink-100">{estimatedCost != null ? fmt.num(estimatedCost, 2) : "—"}</span>
-        </div>
-
-        {!confirming ? (
-          <button
-            disabled={!canSubmit}
-            onClick={() => setConfirming(true)}
-            className={`w-full rounded border py-2 text-xs uppercase tracking-widest transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-              side === "buy" ? "border-gain text-gain hover:bg-gain/10" : "border-loss text-loss hover:bg-loss/10"
-            }`}
-          >
-            review {side} {qtyNum || 0} {symbol}
-          </button>
-        ) : (
-          <div className="space-y-2 rounded border border-amber-signal/60 bg-amber-signal/5 p-3">
-            <div className="text-[10px] uppercase tracking-widest text-amber-signal">this is paper trading</div>
-            <div className="figure text-sm text-ink-100">
-              {side} {qtyNum} {symbol} · {orderType}
-              {orderType === "limit" && <> @ {fmt.num(Number(limitPrice), 2)}</>}
-            </div>
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={() => setConfirming(false)}
-                className="flex-1 rounded border border-ink-800 py-1.5 text-xs uppercase tracking-widest text-ink-100 hover:border-ink-400"
-              >
-                back
-              </button>
-              <button
-                disabled={submitting}
-                onClick={submit}
-                className="flex-1 rounded border border-gain bg-gain/10 py-1.5 text-xs uppercase tracking-widest text-gain hover:bg-gain/20 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {submitting ? "submitting…" : "confirm paper order"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {error && <ErrorBox error={error} />}
-        {result && (
-          <div className="rounded border border-gain/50 bg-gain/10 p-2 text-xs text-gain">
-            order submitted · status: {result.status}
-          </div>
-        )}
-      </div>
-    </Panel>
   );
 }
