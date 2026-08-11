@@ -198,6 +198,7 @@ export function ErrorBox({ error }: { error: string }) {
 // user's first impression is a trading app, not a research console.
 const PRIMARY_NAV: { href: string; label: string }[] = [
   { href: "/", label: "Dashboard" },
+  { href: "/session", label: "Session" },
   { href: "/scanner", label: "Scanner" },
   { href: "/markets", label: "Markets" },
   { href: "/trading", label: "Trading" },
