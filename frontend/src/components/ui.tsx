@@ -39,7 +39,7 @@ export function Stat({
   tone = "neutral",
   hint,
 }: {
-  label: string;
+  label: ReactNode;
   value: string;
   tone?: "neutral" | "gain" | "loss" | "amber";
   hint?: string;

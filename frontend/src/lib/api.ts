@@ -340,6 +340,30 @@ export type PaperPosition = {
   side: string;
 };
 
+export type DecisionAction = "BUY_NOW" | "SELL_NOW" | "WAIT" | "WATCH" | "NO_TRADE";
+export type ConfidenceLevel = "strong" | "moderate" | "weak" | "insufficient";
+
+export type Decision = {
+  symbol: string;
+  generated_at: string;
+  interesting_today: "YES" | "NO" | "MAYBE";
+  action: DecisionAction;
+  why: string;
+  confidence: number;
+  confidence_level: ConfidenceLevel;
+  bias: "long" | "short";
+  last_price: number;
+  day_range: [number, number];
+  entry_zone: [number, number];
+  stop: number;
+  targets: number[];
+  risk_reward: number;
+  reasons: string[];
+  risks: string[];
+  invalidation_conditions: string[];
+  evidence: { is_placeholder: boolean; note: string };
+};
+
 export type FeedbackCategory = "bug" | "confusing_ui" | "missing_feature" | "suggestion" | "general";
 
 export type FeedbackRequest = {
@@ -363,6 +387,8 @@ export const api = {
     get<MarketBar[]>(
       `/api/v1/market/bars?${new URLSearchParams({ symbol, timeframe, limit: String(limit) })}`,
     ),
+  decision: (symbol: string, nonce = 0) =>
+    get<Decision>(`/api/v1/decision/${symbol}${nonce ? `?nonce=${nonce}` : ""}`),
   experiments: (params: Record<string, string> = {}) => {
     const qs = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v !== ""),

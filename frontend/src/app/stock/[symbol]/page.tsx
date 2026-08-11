@@ -14,9 +14,26 @@ import { useParams, useRouter } from "next/navigation";
 import type { Candle } from "@/components/charts";
 import { CandlestickChart, VolumeChart } from "@/components/charts";
 import { ConfidenceStamp, Panel, PreviewBadge, Stat, Tabs } from "@/components/ui";
-import { api, fmt } from "@/lib/api";
+import { Term } from "@/components/glossary";
+import { api, fmt, type Decision } from "@/lib/api";
 import { buildCandles, buildSetup, riskReward } from "@/lib/mock-setup";
 import { SymbolSearch } from "@/components/symbol-search";
+
+const ACTION_LABEL: Record<Decision["action"], string> = {
+  BUY_NOW: "Buy Now",
+  SELL_NOW: "Sell Now",
+  WAIT: "Wait",
+  WATCH: "Watch",
+  NO_TRADE: "No Trade",
+};
+
+const ACTION_TONE: Record<Decision["action"], string> = {
+  BUY_NOW: "border-gain text-gain bg-gain/10",
+  SELL_NOW: "border-loss text-loss bg-loss/10",
+  WAIT: "border-amber-signal text-amber-signal bg-amber-signal/10",
+  WATCH: "border-ink-400 text-ink-100 bg-ink-800/50",
+  NO_TRADE: "border-loss/70 text-loss bg-loss/5",
+};
 
 const TIMEFRAMES: { label: string; timeframe: string; limit: number }[] = [
   { label: "1M", timeframe: "1Day", limit: 22 },
@@ -81,8 +98,43 @@ export default function StockPage() {
     };
   }, [symbol, range]);
 
-  const setup = useMemo(() => buildSetup(symbol, candles), [symbol, candles]);
-  const rr = riskReward(setup);
+  const fallbackSetup = useMemo(() => buildSetup(symbol, candles), [symbol, candles]);
+
+  const [decision, setDecision] = useState<Decision | null>(null);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDecision(null);
+    setDecisionError(null);
+    api
+      .decision(symbol)
+      .then((d) => {
+        if (!cancelled) setDecision(d);
+      })
+      .catch((e) => {
+        if (!cancelled) setDecisionError(String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol]);
+
+  // Decision Engine response shapes the AI Setup panel when available;
+  // falls back to the local placeholder generator so the page never
+  // blocks on it. Both are placeholder logic — same PreviewBadge either way.
+  const setup = decision
+    ? {
+        confidence: decision.confidence,
+        confidenceLevel: decision.confidence_level,
+        bias: decision.bias,
+        buyZone: decision.entry_zone,
+        stopLoss: decision.stop,
+        profitTarget: decision.targets[0],
+        reasons: decision.reasons,
+      }
+    : fallbackSetup;
+  const rr = decision ? decision.risk_reward : riskReward(fallbackSetup);
 
   const last = candles[candles.length - 1];
   const prev = candles[candles.length - 2] ?? last;
@@ -201,11 +253,22 @@ export default function StockPage() {
           </div>
 
           <div className="space-y-4">
-            <Panel title="AI Setup" right={<PreviewBadge />}>
+            <Panel title="EdgeLab Decision" right={<PreviewBadge />}>
               <div className="space-y-3">
-                <div>
+                {decision && (
+                  <div className={`rounded border px-3 py-2 text-center ${ACTION_TONE[decision.action]}`}>
+                    <div className="figure text-lg tracking-widest">{ACTION_LABEL[decision.action]}</div>
+                  </div>
+                )}
+                {decisionError && !decision && (
+                  <p className="text-[10px] text-ink-400">
+                    Couldn&apos;t reach the decision engine — showing an offline placeholder read below.
+                  </p>
+                )}
+                {decision && <p className="text-sm leading-relaxed text-ink-100">{decision.why}</p>}
+                <div className="border-t border-ink-800 pt-3">
                   <div className="mb-1 text-[10px] uppercase tracking-widest text-ink-400">
-                    current trend · ai confidence
+                    current trend · <Term term="confidence">ai confidence</Term>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`figure text-sm ${setup.bias === "long" ? "text-gain" : "text-loss"}`}>
@@ -216,14 +279,24 @@ export default function StockPage() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 border-t border-ink-800 pt-3">
-                  <Stat label="entry zone low" value={fmt.num(setup.buyZone[0], 2)} />
-                  <Stat label="entry zone high" value={fmt.num(setup.buyZone[1], 2)} />
-                  <Stat label="stop loss" value={fmt.num(setup.stopLoss, 2)} tone="loss" />
-                  <Stat label="profit target" value={fmt.num(setup.profitTarget, 2)} tone="gain" />
+                  <Stat label={<Term term="entry zone">entry zone low</Term>} value={fmt.num(setup.buyZone[0], 2)} />
+                  <Stat label={<Term term="entry zone">entry zone high</Term>} value={fmt.num(setup.buyZone[1], 2)} />
+                  <Stat label={<Term term="stop loss">stop loss</Term>} value={fmt.num(setup.stopLoss, 2)} tone="loss" />
+                  <Stat label={<Term term="profit target">profit target</Term>} value={fmt.num(setup.profitTarget, 2)} tone="gain" />
                 </div>
                 <div className="border-t border-ink-800 pt-3">
-                  <Stat label="risk / reward" value={`1 : ${rr.toFixed(2)}`} tone={rr >= 1.5 ? "gain" : "amber"} />
+                  <Stat
+                    label={<Term term="risk/reward">risk / reward</Term>}
+                    value={`1 : ${rr.toFixed(2)}`}
+                    tone={rr >= 1.5 ? "gain" : "amber"}
+                  />
                 </div>
+                {decision && decision.invalidation_conditions.length > 0 && (
+                  <div className="border-t border-ink-800 pt-3">
+                    <div className="mb-1 text-[10px] uppercase tracking-widest text-ink-400">this setup invalidates if</div>
+                    <p className="text-xs text-ink-100">{decision.invalidation_conditions[0]}</p>
+                  </div>
+                )}
                 <p className="border-t border-ink-800 pt-3 text-[10px] leading-relaxed text-ink-400">
                   Probability-based analysis, not a prediction or a guarantee of profit. Confidence score reflects
                   historical pattern agreement, not certainty of outcome.
