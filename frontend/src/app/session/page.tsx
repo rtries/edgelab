@@ -8,8 +8,13 @@
  * flow, and positions data that already power the Stock/Trading/
  * Portfolio pages. No new backend beyond what those already call.
  *
- * v1: no real-time polling yet (Step 4) — watchlist and chart data are
- * fetched once per selection, not streamed.
+ * Step 4: polling, not streaming. The backend is one small instance —
+ * a websocket/SSE layer is real future work, not something to bolt on
+ * casually. Polling every 30s for the selected symbol's chart/decision
+ * and positions, every 90s for the watchlist (concurrency-capped, see
+ * lib/api.mapWithConcurrency), and only while the tab is actually
+ * visible — a background tab shouldn't keep polling a tiny backend for
+ * data nobody's looking at.
  */
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -46,6 +51,22 @@ const ACTION_TONE: Record<Decision["action"], string> = {
 
 type WatchRow = { symbol: string; price: number; changePct: number; isLive: boolean };
 
+const POLL_MS = 30_000;
+
+/** Ticks up every POLL_MS while the tab is visible; frozen (and caught
+ * up on the next tick) while it's hidden. Effects that want to poll
+ * just add `tick` to their dependency array. */
+function usePollTick(intervalMs: number) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") setTick((t) => t + 1);
+    }, intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return tick;
+}
+
 export default function SessionPage() {
   const [symbol, setSymbol] = useState("AAPL");
   const [range, setRange] = useState(TIMEFRAMES[2]); // 6M default — session view favors recent action
@@ -62,7 +83,11 @@ export default function SessionPage() {
   const [positions, setPositions] = useState<PaperPosition[] | null>(null);
   const [positionsError, setPositionsError] = useState<string | null>(null);
 
-  // --- chart ---
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const tick = usePollTick(POLL_MS);
+
+  // --- chart (polls every tick for the selected symbol) ---
   useEffect(() => {
     let cancelled = false;
     setChartLoading(true);
@@ -72,6 +97,7 @@ export default function SessionPage() {
         if (cancelled) return;
         setCandles(bars.map((b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v })));
         setIsLive(true);
+        setLastUpdated(new Date());
       })
       .catch(() => {
         if (cancelled) return;
@@ -84,17 +110,25 @@ export default function SessionPage() {
     return () => {
       cancelled = true;
     };
-  }, [symbol, range]);
+  }, [symbol, range, tick]);
 
-  // --- decision ---
+  // Clear stale decision immediately on symbol switch (not on poll ticks —
+  // that would flicker) so a new symbol never briefly shows the old one's data.
   useEffect(() => {
-    let cancelled = false;
     setDecision(null);
     setDecisionError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol]);
+
+  // --- decision (polls every tick) ---
+  useEffect(() => {
+    let cancelled = false;
     api
       .decision(symbol)
       .then((d) => {
-        if (!cancelled) setDecision(d);
+        if (cancelled) return;
+        setDecision(d);
+        setDecisionError(null);
       })
       .catch((e) => {
         if (!cancelled) setDecisionError(String(e));
@@ -102,13 +136,14 @@ export default function SessionPage() {
     return () => {
       cancelled = true;
     };
-  }, [symbol]);
+  }, [symbol, tick]);
 
-  // --- watchlist (fetched once — real prices, cheap placeholder change%).
-  // Capped at 4 concurrent requests: the backend is a single tiny
-  // instance, and this page already fires chart+decision+positions
-  // calls alongside it — an uncapped 15-wide burst on top of those was
-  // enough to trip transient connection failures on load.
+  // --- watchlist (real prices, cheap placeholder change%). Capped at 4
+  // concurrent requests: the backend is a single tiny instance, and this
+  // page already fires chart+decision+positions calls alongside it — an
+  // uncapped 15-wide burst on top of those was enough to trip transient
+  // connection failures on load. Polls every 3rd tick (~90s) — the
+  // watchlist matters less moment-to-moment than the selected symbol.
   useEffect(() => {
     let cancelled = false;
     mapWithConcurrency(SCAN_UNIVERSE as unknown as string[], 4, (s) =>
@@ -132,14 +167,15 @@ export default function SessionPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Math.floor(tick / 3)]);
 
-  // --- positions ---
+  // --- positions (polls every tick — one cheap call, worth keeping fresh) ---
   function refreshPositions() {
     setPositionsError(null);
     api.paperPositions().then(setPositions).catch((e) => setPositionsError(String(e)));
   }
-  useEffect(refreshPositions, []);
+  useEffect(refreshPositions, [tick]);
 
   const fallbackSetup = useMemo(() => buildSetup(symbol, candles), [symbol, candles]);
   const setup = decision
@@ -167,8 +203,17 @@ export default function SessionPage() {
             One screen for the trading session: watchlist, chart, decision, and paper orders. Paper trading only.
           </p>
         </div>
-        <div className="w-64">
-          <SymbolSearch onSelect={setSymbol} placeholder="jump to any symbol…" />
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] uppercase tracking-widest text-ink-400">
+            {lastUpdated ? (
+              <>auto-refreshing 30s · updated {fmt.time(lastUpdated.toISOString())}</>
+            ) : (
+              "loading…"
+            )}
+          </span>
+          <div className="w-64">
+            <SymbolSearch onSelect={setSymbol} placeholder="jump to any symbol…" />
+          </div>
         </div>
       </div>
 
