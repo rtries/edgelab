@@ -103,6 +103,64 @@ def get_bars(
     return [Bar(t=b["t"], o=b["o"], h=b["h"], l=b["l"], c=b["c"], v=b["v"]) for b in bars]
 
 
+def _alpaca_data_request(path: str) -> dict:
+    """GET against Alpaca's market-data API (read-only, same key/secret
+    as /market/bars — no order side effects, see module docstring)."""
+    if not settings.alpaca_api_key or not settings.alpaca_api_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="ALPACA_API_KEY / ALPACA_API_SECRET are not configured",
+        )
+    req = urllib.request.Request(
+        f"{DATA_BASE_URL}{path}",
+        headers={
+            "APCA-API-KEY-ID": settings.alpaca_api_key,
+            "APCA-API-SECRET-KEY": settings.alpaca_api_secret,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")
+        raise HTTPException(status_code=exc.code, detail=f"Alpaca market data error: {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise HTTPException(status_code=502, detail=f"could not reach Alpaca market data: {exc}") from exc
+
+
+class NewsItem(BaseModel):
+    id: int
+    headline: str
+    summary: str
+    author: str
+    source: str
+    url: str
+    created_at: str
+    symbols: list[str]
+
+
+@router.get("/market/news")
+def get_news(symbol: str, limit: int = Query(10, le=50), user: AuthUser = CurrentUser) -> list[NewsItem]:
+    """Real headlines from Alpaca's News API — same bundled data
+    entitlement as bars, no separate provider/key needed."""
+    qs = urllib.parse.urlencode({"symbols": symbol.upper(), "limit": limit, "sort": "desc"})
+    payload = _alpaca_data_request(f"/v1beta1/news?{qs}")
+    items = payload.get("news") or []
+    return [
+        NewsItem(
+            id=n["id"],
+            headline=n["headline"],
+            summary=n.get("summary", ""),
+            author=n.get("author", ""),
+            source=n.get("source", ""),
+            url=n.get("url", ""),
+            created_at=n["created_at"],
+            symbols=n.get("symbols", []),
+        )
+        for n in items
+    ]
+
+
 def _alpaca_headers() -> dict:
     if not settings.alpaca_api_key or not settings.alpaca_api_secret:
         raise HTTPException(

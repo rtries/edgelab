@@ -15,7 +15,7 @@ import type { Candle } from "@/components/charts";
 import { CandlestickChart, VolumeChart } from "@/components/charts";
 import { ConfidenceStamp, Panel, PreviewBadge, Stat, Tabs } from "@/components/ui";
 import { Term } from "@/components/glossary";
-import { api, fmt, type Decision } from "@/lib/api";
+import { api, fmt, type Decision, type NewsItem } from "@/lib/api";
 import { buildCandles, buildSetup, riskReward } from "@/lib/mock-setup";
 import { SymbolSearch } from "@/components/symbol-search";
 
@@ -51,7 +51,6 @@ const TABS = ["Overview", "Research"];
 // unlike the clearly-labeled synthetic price/AI-setup placeholders elsewhere.
 const RESEARCH_CARDS = [
   { title: "Company overview", note: "Business description, sector, employees, headquarters." },
-  { title: "Recent news", note: "Headlines relevant to this symbol." },
   { title: "Analyst ratings", note: "Buy/hold/sell consensus and price targets." },
   { title: "Earnings", note: "Upcoming date, EPS estimate vs. actual history." },
   { title: "Insider transactions", note: "Recent buys/sells by company insiders." },
@@ -119,6 +118,29 @@ export default function StockPage() {
       cancelled = true;
     };
   }, [symbol]);
+
+  // Real news (Alpaca News API, same bundled credentials as bars) — only
+  // fetched once the Research tab is actually opened, not on every load.
+  const [news, setNews] = useState<NewsItem[] | null>(null);
+  const [newsError, setNewsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (tab !== "Research") return;
+    let cancelled = false;
+    setNews(null);
+    setNewsError(null);
+    api
+      .news(symbol, 8)
+      .then((items) => {
+        if (!cancelled) setNews(items);
+      })
+      .catch((e) => {
+        if (!cancelled) setNewsError(String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol, tab]);
 
   // Decision Engine response shapes the AI Setup panel when available;
   // falls back to the local placeholder generator so the page never
@@ -306,7 +328,39 @@ export default function StockPage() {
           </div>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="space-y-4">
+          <Panel title="Recent news">
+            {newsError ? (
+              <p className="text-xs text-loss">Couldn&apos;t load news: {newsError}</p>
+            ) : news === null ? (
+              <p className="figure animate-pulse text-xs text-ink-400">loading…</p>
+            ) : news.length === 0 ? (
+              <p className="text-xs text-ink-400">No recent news found for {symbol}.</p>
+            ) : (
+              <ul className="space-y-3">
+                {news.map((n) => (
+                  <li key={n.id} className="border-b border-ink-800/60 pb-3 last:border-0 last:pb-0">
+                    <a
+                      href={n.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm text-ink-100 hover:text-amber-signal hover:underline"
+                    >
+                      {n.headline}
+                    </a>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-widest text-ink-400">
+                      <span>{n.source}</span>
+                      <span>·</span>
+                      <span className="figure">{fmt.time(n.created_at)}</span>
+                    </div>
+                    {n.summary && <p className="mt-1 text-xs leading-relaxed text-ink-400">{n.summary}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {RESEARCH_CARDS.map((card) => (
             <Panel key={card.title} title={card.title}>
               <p className="text-xs leading-relaxed text-ink-400">{card.note}</p>
@@ -315,6 +369,7 @@ export default function StockPage() {
               </p>
             </Panel>
           ))}
+          </div>
         </div>
       )}
     </div>

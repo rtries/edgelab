@@ -346,6 +346,17 @@ export type PaperPosition = {
   side: string;
 };
 
+export type NewsItem = {
+  id: number;
+  headline: string;
+  summary: string;
+  author: string;
+  source: string;
+  url: string;
+  created_at: string;
+  symbols: string[];
+};
+
 export type DecisionAction = "BUY_NOW" | "SELL_NOW" | "WAIT" | "WATCH" | "NO_TRADE";
 export type ConfidenceLevel = "strong" | "moderate" | "weak" | "insufficient";
 
@@ -389,6 +400,8 @@ export const api = {
   paperOrders: (limit = 20) => get<PaperOrder[]>(`/api/v1/market/paper-orders?limit=${limit}`),
   paperAccount: () => get<PaperAccount>("/api/v1/market/paper-account"),
   paperPositions: () => get<PaperPosition[]>("/api/v1/market/paper-positions"),
+  news: (symbol: string, limit = 10) =>
+    get<NewsItem[]>(`/api/v1/market/news?${new URLSearchParams({ symbol, limit: String(limit) })}`),
   marketBars: (symbol: string, timeframe = "1Day", limit = 120) =>
     get<MarketBar[]>(
       `/api/v1/market/bars?${new URLSearchParams({ symbol, timeframe, limit: String(limit) })}`,
