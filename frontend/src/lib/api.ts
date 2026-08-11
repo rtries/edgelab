@@ -321,6 +321,25 @@ export type PaperOrder = {
   submitted_at: string;
 };
 
+export type PaperAccount = {
+  equity: string;
+  cash: string;
+  buying_power: string;
+  last_equity: string;
+  status: string;
+};
+
+export type PaperPosition = {
+  symbol: string;
+  qty: string;
+  avg_entry_price: string;
+  current_price: string;
+  market_value: string;
+  unrealized_pl: string;
+  unrealized_plpc: string;
+  side: string;
+};
+
 export type FeedbackCategory = "bug" | "confusing_ui" | "missing_feature" | "suggestion" | "general";
 
 export type FeedbackRequest = {
@@ -338,6 +357,8 @@ export const api = {
   submitFeedback: (req: FeedbackRequest) => post<{ id: string }>("/api/v1/feedback", req),
   submitPaperOrder: (req: PaperOrderRequest) => post<PaperOrder>("/api/v1/market/paper-order", req),
   paperOrders: (limit = 20) => get<PaperOrder[]>(`/api/v1/market/paper-orders?limit=${limit}`),
+  paperAccount: () => get<PaperAccount>("/api/v1/market/paper-account"),
+  paperPositions: () => get<PaperPosition[]>("/api/v1/market/paper-positions"),
   marketBars: (symbol: string, timeframe = "1Day", limit = 120) =>
     get<MarketBar[]>(
       `/api/v1/market/bars?${new URLSearchParams({ symbol, timeframe, limit: String(limit) })}`,

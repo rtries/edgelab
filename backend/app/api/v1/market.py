@@ -158,3 +158,17 @@ def list_paper_orders(limit: int = Query(20, le=100), user: AuthUser = CurrentUs
     integration; not scoped per EdgeLab user."""
     qs = urllib.parse.urlencode({"status": "all", "limit": limit, "direction": "desc"})
     return _alpaca_paper_request("GET", f"/v2/orders?{qs}")
+
+
+@router.get("/market/paper-account")
+def get_paper_account(user: AuthUser = CurrentUser) -> dict:
+    """Equity/cash/buying-power/day-P&L for the shared Alpaca PAPER
+    account — same sharing caveat as orders above: not per-EdgeLab-user,
+    it's whoever's paper account these API keys point at."""
+    return _alpaca_paper_request("GET", "/v2/account")
+
+
+@router.get("/market/paper-positions")
+def list_paper_positions(user: AuthUser = CurrentUser) -> list[dict]:
+    """Open positions in the shared Alpaca PAPER account."""
+    return _alpaca_paper_request("GET", "/v2/positions")
