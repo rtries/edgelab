@@ -193,10 +193,14 @@ def run_scan_once() -> None:
 
 
 async def auto_trade_loop() -> None:
+    """run_scan_once() is fully synchronous, blocking urllib HTTP calls —
+    running it directly on this coroutine would freeze the single
+    event loop that also serves every other API request for the whole
+    scan duration. asyncio.to_thread keeps it off the loop."""
     logger.info("auto-trade loop started (interval=%ss)", SCAN_INTERVAL_SECONDS)
     while True:
         try:
-            run_scan_once()
+            await asyncio.to_thread(run_scan_once)
         except Exception:  # noqa: BLE001 — the loop must never die
             logger.exception("auto-trade scan cycle failed")
         await asyncio.sleep(SCAN_INTERVAL_SECONDS)
