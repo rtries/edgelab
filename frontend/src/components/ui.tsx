@@ -193,20 +193,23 @@ export function ErrorBox({ error }: { error: string }) {
   );
 }
 
-// A short, always-visible list plus a collapsible "Research Lab" group —
-// the quant-research pages are real and stay one click away, but a new
-// user's first impression is a trading app, not a research console.
+// Product pivot: "connect, choose risk, start, watch" — not "learn 20
+// research tools." Five primary items, everything quant/advanced lives
+// one click away in Research Lab. See conversation notes on the
+// beginner-simplification pass for the full before/after rationale.
 const PRIMARY_NAV: { href: string; label: string }[] = [
-  { href: "/", label: "Dashboard" },
-  { href: "/session", label: "Session" },
-  { href: "/scanner", label: "Scanner" },
-  { href: "/markets", label: "Markets" },
-  { href: "/trading", label: "Trading" },
-  { href: "/portfolio", label: "Portfolio" },
-  { href: "/morning", label: "Morning Brief" },
+  { href: "/", label: "Home" },
+  { href: "/session", label: "Agent" },
+  { href: "/trading", label: "Trades" },
+  { href: "/portfolio", label: "Account" },
+  { href: "/connections", label: "Connections" },
 ];
 
 const RESEARCH_NAV: { href: string; label: string }[] = [
+  { href: "/research-dashboard", label: "Research Dashboard" },
+  { href: "/scanner", label: "Scanner" },
+  { href: "/markets", label: "Markets" },
+  { href: "/morning", label: "Morning Brief" },
   { href: "/strategies", label: "Strategies" },
   { href: "/experiments", label: "Experiments" },
   { href: "/compare", label: "Compare" },
