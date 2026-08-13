@@ -71,7 +71,11 @@ def get_webhook_url(request: Request, user: AuthUser = CurrentUser) -> dict:
     if not existing:
         tokens[token] = user.id
         _write_json(_tokens_path(), tokens)
-    base = str(request.base_url).rstrip("/")
+    # Northflank terminates TLS upstream, so request.url.scheme is "http"
+    # internally even though the public URL is https — trust
+    # X-Forwarded-Proto (set by the proxy) over the raw scheme.
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+    base = str(request.base_url).rstrip("/").replace(f"{request.url.scheme}://", f"{scheme}://", 1)
     return {
         "url": f"{base}/api/v1/tradingview/signal/{token}",
         "example_message": json.dumps({"symbol": "{{ticker}}", "side": "buy"}),
