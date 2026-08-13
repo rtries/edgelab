@@ -7,10 +7,9 @@
  * is no separate "connect broker" flow yet, this just surfaces the
  * state honestly rather than pretending a connect button exists).
  *
- * TradingView: no real webhook intake endpoint exists yet (see the
- * product pivot notes) — this card is clearly marked "coming soon"
- * rather than showing a fake URL/token, per the same
- * never-fake-functionality rule as the AI setup badges.
+ * TradingView: real webhook intake now — see app/api/v1/tradingview.py.
+ * Paper only, and a signal only acts if EdgeLab's own Decision Engine
+ * currently agrees (an alert alone is never sufficient).
  */
 import { useEffect, useState } from "react";
 import { ErrorBox, Panel } from "@/components/ui";
@@ -24,6 +23,11 @@ export default function ConnectionsPage() {
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [codeMinutes, setCodeMinutes] = useState<number | null>(null);
   const [telegramError, setTelegramError] = useState<string | null>(null);
+
+  const [tvUrl, setTvUrl] = useState<string | null>(null);
+  const [tvExample, setTvExample] = useState<string | null>(null);
+  const [tvError, setTvError] = useState<string | null>(null);
+  const [tvCopied, setTvCopied] = useState(false);
 
   useEffect(() => {
     api
@@ -52,6 +56,17 @@ export default function ConnectionsPage() {
         setCodeMinutes(r.expires_in_minutes);
       })
       .catch((e) => setTelegramError(String(e)));
+  }
+
+  function getWebhookUrl() {
+    setTvError(null);
+    api
+      .tradingviewWebhookUrl()
+      .then((r) => {
+        setTvUrl(r.url);
+        setTvExample(r.example_message);
+      })
+      .catch((e) => setTvError(String(e)));
   }
 
   return (
@@ -142,18 +157,53 @@ export default function ConnectionsPage() {
       </Panel>
 
       <Panel title="TradingView">
-        <div className="space-y-2">
-          <div className="text-sm text-ink-100">Send alerts from TradingView into EdgeLab</div>
-          <p className="max-w-xl text-xs leading-relaxed text-ink-400">
-            Not built yet. When it lands, it&apos;ll work through TradingView&apos;s supported alert-webhook
-            feature (TradingView doesn&apos;t offer a general trading API, and EdgeLab won&apos;t automate the
-            TradingView website or ask for your TradingView password) — an alert fires, EdgeLab checks it against
-            your risk rules, and only then places a paper order. A TradingView alert will never directly become an
-            order.
-          </p>
-          <span className="inline-block rounded border border-ink-800 px-2 py-1 text-[10px] uppercase tracking-widest text-ink-400">
-            coming soon
-          </span>
+        <div className="space-y-3">
+          <div>
+            <div className="text-sm text-ink-100">Send alerts from TradingView into EdgeLab</div>
+            <p className="mt-1 max-w-xl text-xs leading-relaxed text-ink-400">
+              Works with any symbol you trade, not just EdgeLab&apos;s watchlist. Paper only — an alert fires,
+              EdgeLab checks it against its own current read on that symbol and your risk rules, and only then
+              places a paper order. An alert never directly becomes an order.
+            </p>
+          </div>
+
+          {tvError && <ErrorBox error={tvError} />}
+
+          {tvUrl ? (
+            <div className="space-y-2">
+              <div>
+                <div className="mb-1 text-[10px] uppercase tracking-widest text-ink-400">1. Webhook URL — paste into TradingView&apos;s alert &quot;Webhook URL&quot; field</div>
+                <div className="flex items-center gap-2 rounded border border-ink-800 bg-ink-950 px-3 py-2">
+                  <span className="figure truncate text-xs text-ink-100">{tvUrl}</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard?.writeText(tvUrl);
+                      setTvCopied(true);
+                    }}
+                    className="ml-auto shrink-0 rounded border border-ink-800 px-2 py-1 text-[10px] uppercase tracking-widest text-ink-100 hover:border-amber-signal hover:text-amber-signal"
+                  >
+                    {tvCopied ? "copied" : "copy"}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 text-[10px] uppercase tracking-widest text-ink-400">2. Alert message — paste into TradingView&apos;s alert &quot;Message&quot; field</div>
+                <div className="rounded border border-ink-800 bg-ink-950 px-3 py-2">
+                  <code className="figure text-xs text-ink-100">{tvExample}</code>
+                </div>
+                <p className="mt-1 text-[10px] text-ink-400">
+                  Change &quot;side&quot; to &quot;sell&quot; for a sell alert, and replace {"{{ticker}}"} with a fixed symbol if you&apos;d rather not rely on TradingView&apos;s placeholder.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={getWebhookUrl}
+              className="rounded border border-ink-800 px-3 py-1.5 text-xs uppercase tracking-widest text-ink-100 hover:border-amber-signal hover:text-amber-signal"
+            >
+              Get webhook URL
+            </button>
+          )}
         </div>
       </Panel>
     </div>

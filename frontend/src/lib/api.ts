@@ -402,6 +402,7 @@ export const api = {
   paperPositions: () => get<PaperPosition[]>("/api/v1/market/paper-positions"),
   telegramLinkCode: () => get<{ code: string; expires_in_minutes: number }>("/api/v1/telegram/link-code"),
   telegramStatus: () => get<{ linked: boolean; auto_trade: boolean }>("/api/v1/telegram/status"),
+  tradingviewWebhookUrl: () => get<{ url: string; example_message: string }>("/api/v1/tradingview/webhook-url"),
   news: (symbol: string, limit = 10) =>
     get<NewsItem[]>(`/api/v1/market/news?${new URLSearchParams({ symbol, limit: String(limit) })}`),
   marketBars: (symbol: string, timeframe = "1Day", limit = 120) =>
