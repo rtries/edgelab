@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     # AI assistant
     anthropic_api_key: str = ""
 
+    # Telegram bot (agent status/control from chat — see app/api/v1/telegram.py)
+    telegram_bot_token: str = ""
+    telegram_webhook_secret: str = ""  # must match Telegram's X-Telegram-Bot-Api-Secret-Token
+
     # auth (Supabase-issued JWTs)
     # supabase_url enables JWKS-based verification (ES256/RS256) — the
     # default for current Supabase projects, and the primary path.

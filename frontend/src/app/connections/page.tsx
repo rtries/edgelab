@@ -13,11 +13,17 @@
  * never-fake-functionality rule as the AI setup badges.
  */
 import { useEffect, useState } from "react";
-import { Panel } from "@/components/ui";
+import { ErrorBox, Panel } from "@/components/ui";
 import { api } from "@/lib/api";
 
 export default function ConnectionsPage() {
   const [brokerStatus, setBrokerStatus] = useState<"checking" | "connected" | "error">("checking");
+
+  const [linked, setLinked] = useState<boolean | null>(null);
+  const [autoTrade, setAutoTrade] = useState(false);
+  const [linkCode, setLinkCode] = useState<string | null>(null);
+  const [codeMinutes, setCodeMinutes] = useState<number | null>(null);
+  const [telegramError, setTelegramError] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -25,6 +31,28 @@ export default function ConnectionsPage() {
       .then(() => setBrokerStatus("connected"))
       .catch(() => setBrokerStatus("error"));
   }, []);
+
+  function refreshTelegramStatus() {
+    api
+      .telegramStatus()
+      .then((s) => {
+        setLinked(s.linked);
+        setAutoTrade(s.auto_trade);
+      })
+      .catch((e) => setTelegramError(String(e)));
+  }
+  useEffect(refreshTelegramStatus, []);
+
+  function getCode() {
+    setTelegramError(null);
+    api
+      .telegramLinkCode()
+      .then((r) => {
+        setLinkCode(r.code);
+        setCodeMinutes(r.expires_in_minutes);
+      })
+      .catch((e) => setTelegramError(String(e)));
+  }
 
   return (
     <div className="space-y-4">
@@ -53,6 +81,63 @@ export default function ConnectionsPage() {
               {brokerStatus === "checking" ? "checking…" : brokerStatus === "connected" ? "Connected" : "Not reachable"}
             </span>
           </div>
+        </div>
+      </Panel>
+
+      <Panel title="Telegram">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm text-ink-100">Check your agent and toggle paper auto-trade from chat</div>
+              <div className="text-xs text-ink-400">Paper trading only — Telegram can never place a real-money order.</div>
+            </div>
+            {linked != null && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className={`h-2 w-2 rounded-full ${linked ? "bg-gain" : "bg-ink-400"}`} />
+                <span className={linked ? "text-gain" : "text-ink-400"}>{linked ? "Linked" : "Not linked"}</span>
+              </div>
+            )}
+          </div>
+
+          {telegramError && <ErrorBox error={telegramError} />}
+
+          {linked ? (
+            <div className="text-xs text-ink-400">
+              Auto-trade is currently{" "}
+              <span className={autoTrade ? "text-gain" : "text-ink-100"}>{autoTrade ? "ON" : "OFF"}</span> — toggle
+              it from the bot with <span className="figure text-ink-100">/on</span> or{" "}
+              <span className="figure text-ink-100">/off</span>.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <ol className="list-decimal space-y-1 pl-4 text-xs text-ink-400">
+                <li>Get a link code below</li>
+                <li>Open the EdgeLab bot on Telegram</li>
+                <li>
+                  Send <span className="figure text-ink-100">/link CODE</span> using the code you got
+                </li>
+              </ol>
+              {linkCode ? (
+                <div className="flex items-center gap-2 rounded border border-ink-800 bg-ink-950 px-3 py-2">
+                  <span className="figure text-lg tracking-widest text-amber-signal">{linkCode}</span>
+                  <span className="text-xs text-ink-400">expires in {codeMinutes} min</span>
+                  <button
+                    onClick={() => navigator.clipboard?.writeText(`/link ${linkCode}`)}
+                    className="ml-auto rounded border border-ink-800 px-2 py-1 text-[10px] uppercase tracking-widest text-ink-100 hover:border-amber-signal hover:text-amber-signal"
+                  >
+                    copy /link command
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={getCode}
+                  className="rounded border border-ink-800 px-3 py-1.5 text-xs uppercase tracking-widest text-ink-100 hover:border-amber-signal hover:text-amber-signal"
+                >
+                  Get link code
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </Panel>
 

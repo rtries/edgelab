@@ -400,6 +400,8 @@ export const api = {
   paperOrders: (limit = 20) => get<PaperOrder[]>(`/api/v1/market/paper-orders?limit=${limit}`),
   paperAccount: () => get<PaperAccount>("/api/v1/market/paper-account"),
   paperPositions: () => get<PaperPosition[]>("/api/v1/market/paper-positions"),
+  telegramLinkCode: () => get<{ code: string; expires_in_minutes: number }>("/api/v1/telegram/link-code"),
+  telegramStatus: () => get<{ linked: boolean; auto_trade: boolean }>("/api/v1/telegram/status"),
   news: (symbol: string, limit = 10) =>
     get<NewsItem[]>(`/api/v1/market/news?${new URLSearchParams({ symbol, limit: String(limit) })}`),
   marketBars: (symbol: string, timeframe = "1Day", limit = 120) =>
