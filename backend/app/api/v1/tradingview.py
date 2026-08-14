@@ -38,6 +38,7 @@ from app.core.auth import AuthUser, get_current_user
 from ops.auto_trader import (
     AUTO_TRADE_NOTIONAL_USD,
     COOLDOWN,
+    _buying_power,
     _emergency_stop_active,
     _notify_telegram,
     _open_position_symbols,
@@ -158,9 +159,16 @@ async def receive_signal(token: str, request: Request) -> dict:
             f"EdgeLab's current read on {symbol} is {decision['action']}, not {wanted_action} — signal not acted on",
         )
 
-    # RISK ENGINE — same cooldown / open-position rules as the background scanner
+    # RISK ENGINE — same cooldown / open-position / buying-power rules as the background scanner
     if symbol in _open_position_symbols():
         return _reject(user_id, symbol, f"already holding a position in {symbol}")
+
+    if side == "buy":
+        bp = _buying_power()
+        if bp is None:
+            return _reject(user_id, symbol, "couldn't verify buying power")
+        if bp < AUTO_TRADE_NOTIONAL_USD:
+            return _reject(user_id, symbol, f"insufficient buying power: ${bp:.2f} available, ${AUTO_TRADE_NOTIONAL_USD:.0f} needed")
 
     state = _read_json(_state_path(user_id), {})
     last = state.get(symbol)

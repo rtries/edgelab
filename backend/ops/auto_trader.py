@@ -152,6 +152,20 @@ def _open_position_symbols() -> set[str]:
         return set()
 
 
+def _buying_power() -> float | None:
+    """Shared paper account, same caveat as _open_position_symbols.
+    Returns None (not 0) on a fetch failure so callers can distinguish
+    "genuinely no buying power" from "couldn't check" — the latter
+    should also block the order, just with a different reason."""
+    req = urllib.request.Request(f"{PAPER_TRADING_BASE_URL}/v2/account", headers=_alpaca_headers(), method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+            account = json.loads(resp.read())
+        return float(account["buying_power"])
+    except (urllib.error.URLError, json.JSONDecodeError, KeyError, ValueError):
+        return None
+
+
 def _place_paper_order(symbol: str, side: str, notional_usd: float) -> dict | None:
     body = json.dumps({"symbol": symbol, "notional": str(notional_usd), "side": side, "type": "market", "time_in_force": "day"}).encode()
     req = urllib.request.Request(
@@ -194,6 +208,11 @@ def scan_user_once(user_id: str) -> None:
         return
     state = _read_json(_state_path(user_id), {})
     open_symbols = _open_position_symbols()
+    # Fetched once per scan and decremented locally as orders fire within
+    # this cycle — Alpaca won't reflect a just-placed order's impact on
+    # buying power until the next fetch, and a scan can touch several
+    # symbols in one pass.
+    remaining_buying_power = _buying_power()
     now = datetime.now(UTC)
     fake_user = AuthUser(id=user_id, email=None)
     changed = False
@@ -209,6 +228,18 @@ def scan_user_once(user_id: str) -> None:
         if symbol in open_symbols:
             continue  # already have a position — don't pile in
 
+        if action == "BUY_NOW":
+            if remaining_buying_power is None:
+                log_event(user_id, "rejected", f"couldn't verify buying power for {symbol} — skipping", {"symbol": symbol, "source": "auto_scan"})
+                continue
+            if remaining_buying_power < AUTO_TRADE_NOTIONAL_USD:
+                log_event(
+                    user_id, "rejected",
+                    f"insufficient buying power for {symbol}: ${remaining_buying_power:.2f} available, ${AUTO_TRADE_NOTIONAL_USD:.0f} needed",
+                    {"symbol": symbol, "source": "auto_scan"},
+                )
+                continue
+
         last = state.get(symbol)
         if last and last.get("action") == action:
             last_at = datetime.fromisoformat(last["at"])
@@ -220,6 +251,8 @@ def scan_user_once(user_id: str) -> None:
         state[symbol] = {"action": action, "at": now.isoformat(), "order_id": order.get("id") if order else None}
         changed = True
         if order:
+            if side == "buy" and remaining_buying_power is not None:
+                remaining_buying_power -= AUTO_TRADE_NOTIONAL_USD
             log_event(
                 user_id, "executed",
                 f"{side} ~${AUTO_TRADE_NOTIONAL_USD:.0f} of {symbol} (paper) — {decision['why']}",
