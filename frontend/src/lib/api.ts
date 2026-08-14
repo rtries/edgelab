@@ -399,6 +399,15 @@ export type AgentActivityEvent = {
   meta: Record<string, unknown>;
 };
 
+export type Announcement = {
+  id: string;
+  date: string;
+  title: string;
+  changed: string[];
+  needs_attention: string[];
+  goal: string;
+};
+
 export type FeedbackCategory = "bug" | "confusing_ui" | "missing_feature" | "suggestion" | "general";
 
 export type FeedbackRequest = {
@@ -421,6 +430,7 @@ export const api = {
   telegramLinkCode: () => get<{ code: string; expires_in_minutes: number }>("/api/v1/telegram/link-code"),
   telegramStatus: () => get<{ linked: boolean; auto_trade: boolean }>("/api/v1/telegram/status"),
   tradingviewWebhookUrl: () => get<{ url: string; example_message: string }>("/api/v1/tradingview/webhook-url"),
+  announcement: () => get<Announcement>("/api/v1/announcement"),
   agentStatus: () => get<AgentStatus>("/api/v1/agent/status"),
   agentActivity: (limit = 50) => get<AgentActivityEvent[]>(`/api/v1/agent/activity?limit=${limit}`),
   enableAgent: () => post<{ enabled: boolean }>("/api/v1/agent/enable"),

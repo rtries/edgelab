@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
 import { FeedbackButton } from "@/components/feedback-button";
+import { AnnouncementBanner } from "@/components/announcement-banner";
 
 export function Panel({
   title,
@@ -279,7 +280,10 @@ export function Shell({ children }: { children: ReactNode }) {
         </nav>
         <ShellFooter />
       </aside>
-      <main className="min-w-0 flex-1 p-4">{children}</main>
+      <main className="min-w-0 flex-1 p-4">
+        <AnnouncementBanner />
+        {children}
+      </main>
       <FeedbackButton />
     </div>
   );

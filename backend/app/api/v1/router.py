@@ -1,9 +1,10 @@
 from fastapi import APIRouter
 
-from app.api.v1 import agent, backtests, decision, feedback, health, market, ops, research, strategies, telegram, tradingview
+from app.api.v1 import agent, announcement, backtests, decision, feedback, health, market, ops, research, strategies, telegram, tradingview
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
+api_router.include_router(announcement.router, tags=["announcement"])
 api_router.include_router(strategies.router, prefix="/strategies", tags=["strategies"])
 api_router.include_router(backtests.router, prefix="/backtests", tags=["backtests"])
 api_router.include_router(research.router, tags=["research"])
