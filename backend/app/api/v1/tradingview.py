@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -46,6 +46,8 @@ from ops.auto_trader import (
     _read_json,
     _state_path,
     _write_json,
+    is_auto_trade_enabled,
+    log_event,
 )
 
 router = APIRouter()
@@ -82,10 +84,23 @@ def get_webhook_url(request: Request, user: AuthUser = CurrentUser) -> dict:
     }
 
 
+SIGNAL_MAX_AGE = timedelta(minutes=5)  # stale-signal rejection (spec section 13/26)
+
+
+def _seen_signals_path(user_id: str) -> Path:
+    return _ops_root() / user_id / "tradingview_seen_signals.json"
+
+
+def _reject(user_id: str, symbol: str | None, reason: str) -> dict:
+    log_event(user_id, "rejected", reason, {"symbol": symbol, "source": "tradingview"})
+    return {"accepted": True, "acted": False, "reason": reason}
+
+
 @router.post("/tradingview/signal/{token}")
 async def receive_signal(token: str, request: Request) -> dict:
     user_id = _user_for_token(token)
     if not user_id:
+        # No user to attribute this to — can't log against an account, just refuse.
         raise HTTPException(status_code=404, detail="unknown webhook token")
 
     raw = await request.body()
@@ -96,29 +111,56 @@ async def receive_signal(token: str, request: Request) -> dict:
 
     symbol = str(payload.get("symbol", "")).upper().strip()
     side = str(payload.get("side", "")).lower().strip()
+    signal_id = payload.get("signal_id")
+    signal_ts = payload.get("timestamp")
+
+    log_event(user_id, "signal_received", f"{side} {symbol}".strip(), {"symbol": symbol, "side": side, "raw": payload})
+
     if not symbol or side not in ("buy", "sell"):
         raise HTTPException(status_code=422, detail="payload needs symbol and side ('buy'/'sell')")
 
+    # Idempotency — a duplicated/retried webhook delivery must not double-trade.
+    if signal_id:
+        seen = _read_json(_seen_signals_path(user_id), {})
+        if signal_id in seen:
+            return _reject(user_id, symbol, f"duplicate signal_id {signal_id} — already processed")
+        seen[signal_id] = datetime.now(UTC).isoformat()
+        # bound the file — keep the most recent 500 ids
+        if len(seen) > 500:
+            seen = dict(sorted(seen.items(), key=lambda kv: kv[1])[-500:])
+        _write_json(_seen_signals_path(user_id), seen)
+
+    # Freshness — an alert that took too long to arrive is stale, act on nothing.
+    if signal_ts:
+        try:
+            sent_at = datetime.fromisoformat(str(signal_ts).replace("Z", "+00:00"))
+            if datetime.now(UTC) - sent_at > SIGNAL_MAX_AGE:
+                return _reject(user_id, symbol, f"stale signal — timestamp {signal_ts} is older than {SIGNAL_MAX_AGE}")
+        except ValueError:
+            pass  # unparseable timestamp isn't grounds to reject; just skip the freshness check
+
     if _emergency_stop_active(user_id):
-        return {"accepted": True, "acted": False, "reason": "emergency stop is active for this account"}
+        return _reject(user_id, symbol, "emergency stop is active for this account")
+
+    if not is_auto_trade_enabled(user_id):
+        return _reject(user_id, symbol, "agent is not enabled for this account — signal received but not acted on")
 
     # DECISION ENGINE — the alert alone is never sufficient
     try:
         decision = get_decision(symbol=symbol, nonce=0, user=AuthUser(id=user_id, email=None))
     except HTTPException as exc:
-        return {"accepted": True, "acted": False, "reason": f"no data for {symbol}: {exc.detail}"}
+        return _reject(user_id, symbol, f"no data for {symbol}: {exc.detail}")
 
     wanted_action = "BUY_NOW" if side == "buy" else "SELL_NOW"
     if decision["action"] != wanted_action:
-        return {
-            "accepted": True,
-            "acted": False,
-            "reason": f"EdgeLab's current read on {symbol} is {decision['action']}, not {wanted_action} — signal not acted on",
-        }
+        return _reject(
+            user_id, symbol,
+            f"EdgeLab's current read on {symbol} is {decision['action']}, not {wanted_action} — signal not acted on",
+        )
 
     # RISK ENGINE — same cooldown / open-position rules as the background scanner
     if symbol in _open_position_symbols():
-        return {"accepted": True, "acted": False, "reason": f"already holding a position in {symbol}"}
+        return _reject(user_id, symbol, f"already holding a position in {symbol}")
 
     state = _read_json(_state_path(user_id), {})
     last = state.get(symbol)
@@ -126,15 +168,20 @@ async def receive_signal(token: str, request: Request) -> dict:
     if last and last.get("action") == wanted_action:
         last_at = datetime.fromisoformat(last["at"])
         if now - last_at < COOLDOWN:
-            return {"accepted": True, "acted": False, "reason": "cooldown — acted on this signal recently"}
+            return _reject(user_id, symbol, "cooldown — acted on this signal recently")
 
     # EXECUTION ENGINE — paper, unconditionally
     order = _place_paper_order(symbol, side, AUTO_TRADE_NOTIONAL_USD)
     if not order:
-        return {"accepted": True, "acted": False, "reason": "order placement failed"}
+        return _reject(user_id, symbol, "order placement failed")
 
     state[symbol] = {"action": wanted_action, "at": now.isoformat(), "order_id": order.get("id")}
     _write_json(_state_path(user_id), state)
+    log_event(
+        user_id, "executed", f"{side} ~${AUTO_TRADE_NOTIONAL_USD:.0f} of {symbol} (paper) — TradingView signal",
+        {"symbol": symbol, "side": side, "order_id": order.get("id"), "source": "tradingview"},
+    )
     _notify_telegram(user_id, f"TradingView signal executed: {side} ~${AUTO_TRADE_NOTIONAL_USD:.0f} of {symbol} (paper)")
+    return {"accepted": True, "acted": True, "order_id": order.get("id")}
 
     return {"accepted": True, "acted": True, "order_id": order.get("id")}

@@ -199,7 +199,7 @@ export function ErrorBox({ error }: { error: string }) {
 // beginner-simplification pass for the full before/after rationale.
 const PRIMARY_NAV: { href: string; label: string }[] = [
   { href: "/", label: "Home" },
-  { href: "/session", label: "Agent" },
+  { href: "/agent", label: "Agent" },
   { href: "/trading", label: "Trades" },
   { href: "/portfolio", label: "Account" },
   { href: "/connections", label: "Connections" },
@@ -207,6 +207,7 @@ const PRIMARY_NAV: { href: string; label: string }[] = [
 
 const RESEARCH_NAV: { href: string; label: string }[] = [
   { href: "/research-dashboard", label: "Research Dashboard" },
+  { href: "/session", label: "Session Mode (advanced)" },
   { href: "/scanner", label: "Scanner" },
   { href: "/markets", label: "Markets" },
   { href: "/morning", label: "Morning Brief" },

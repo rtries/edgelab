@@ -70,6 +70,23 @@ def _write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=1))
 
 
+def _agent_config_path(user_id: str) -> Path:
+    return _ops_root() / user_id / "agent_config.json"
+
+
+def set_auto_trade(user_id: str, enabled: bool) -> None:
+    """Same flag the Telegram /on and /off commands write — the web UI's
+    Agent page and Telegram are two front ends for one piece of state."""
+    cfg = _read_json(_agent_config_path(user_id), {})
+    cfg["auto_trade"] = enabled
+    _write_json(_agent_config_path(user_id), cfg)
+    log_event(user_id, "scan_note", f"agent {'enabled' if enabled else 'disabled'} from web UI")
+
+
+def is_auto_trade_enabled(user_id: str) -> bool:
+    return bool(_read_json(_agent_config_path(user_id), {}).get("auto_trade"))
+
+
 def _users_with_auto_trade_on() -> list[str]:
     root = _ops_root()
     if not root.exists():
@@ -90,6 +107,34 @@ def _emergency_stop_active(user_id: str) -> bool:
 
 def _state_path(user_id: str) -> Path:
     return _ops_root() / user_id / "auto_trade_state.json"
+
+
+def _activity_path(user_id: str) -> Path:
+    return _ops_root() / user_id / "agent_activity.jsonl"
+
+
+def log_event(user_id: str, kind: str, message: str, meta: dict | None = None) -> None:
+    """Append-only activity/audit log — powers the Agent page's
+    activity feed and is the audit trail for every automated decision,
+    acted on or not. kind: "signal_received" | "rejected" | "executed" | "scan_note"."""
+    path = _activity_path(user_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    entry = {
+        "ts": datetime.now(UTC).isoformat(),
+        "kind": kind,
+        "message": message,
+        "meta": meta or {},
+    }
+    with path.open("a") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+def read_activity(user_id: str, limit: int = 50) -> list[dict]:
+    path = _activity_path(user_id)
+    if not path.exists():
+        return []
+    lines = path.read_text().splitlines()
+    return [json.loads(line) for line in lines[-limit:]][::-1]
 
 
 def _open_position_symbols() -> set[str]:
@@ -175,10 +220,17 @@ def scan_user_once(user_id: str) -> None:
         state[symbol] = {"action": action, "at": now.isoformat(), "order_id": order.get("id") if order else None}
         changed = True
         if order:
+            log_event(
+                user_id, "executed",
+                f"{side} ~${AUTO_TRADE_NOTIONAL_USD:.0f} of {symbol} (paper) — {decision['why']}",
+                {"symbol": symbol, "side": side, "order_id": order.get("id"), "source": "auto_scan"},
+            )
             _notify_telegram(
                 user_id,
                 f"Auto-trade: {side} ~${AUTO_TRADE_NOTIONAL_USD:.0f} of {symbol} (paper)\n{decision['why']}",
             )
+        else:
+            log_event(user_id, "rejected", f"order placement failed for {symbol}", {"symbol": symbol, "source": "auto_scan"})
 
     if changed:
         _write_json(_state_path(user_id), state)

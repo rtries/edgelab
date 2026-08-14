@@ -381,6 +381,24 @@ export type Decision = {
   evidence: { is_placeholder: boolean; note: string };
 };
 
+export type AgentWatchItem = { symbol: string; action: DecisionAction; why: string };
+
+export type AgentStatus = {
+  enabled: boolean;
+  emergency_stop_active: boolean;
+  allocation_per_trade_usd: number;
+  account: PaperAccount;
+  positions: PaperPosition[];
+  watchlist: AgentWatchItem[];
+};
+
+export type AgentActivityEvent = {
+  ts: string;
+  kind: "signal_received" | "rejected" | "executed" | "scan_note";
+  message: string;
+  meta: Record<string, unknown>;
+};
+
 export type FeedbackCategory = "bug" | "confusing_ui" | "missing_feature" | "suggestion" | "general";
 
 export type FeedbackRequest = {
@@ -403,6 +421,10 @@ export const api = {
   telegramLinkCode: () => get<{ code: string; expires_in_minutes: number }>("/api/v1/telegram/link-code"),
   telegramStatus: () => get<{ linked: boolean; auto_trade: boolean }>("/api/v1/telegram/status"),
   tradingviewWebhookUrl: () => get<{ url: string; example_message: string }>("/api/v1/tradingview/webhook-url"),
+  agentStatus: () => get<AgentStatus>("/api/v1/agent/status"),
+  agentActivity: (limit = 50) => get<AgentActivityEvent[]>(`/api/v1/agent/activity?limit=${limit}`),
+  enableAgent: () => post<{ enabled: boolean }>("/api/v1/agent/enable"),
+  disableAgent: () => post<{ enabled: boolean }>("/api/v1/agent/disable"),
   news: (symbol: string, limit = 10) =>
     get<NewsItem[]>(`/api/v1/market/news?${new URLSearchParams({ symbol, limit: String(limit) })}`),
   marketBars: (symbol: string, timeframe = "1Day", limit = 120) =>
