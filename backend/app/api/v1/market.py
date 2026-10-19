@@ -48,6 +48,17 @@ class Bar(BaseModel):
     v: float
 
 
+def _crypto_pair(symbol: str) -> str | None:
+    """App-level crypto symbols are written BTC-USD (a slash would break
+    URL routes like /stock/BTC-USD); Alpaca wants BTC/USD. Returns the
+    Alpaca pair, or None for an ordinary stock ticker."""
+    s = symbol.upper().replace("-", "/")
+    if "/" not in s:
+        return None
+    base, _, quote = s.partition("/")
+    return f"{base}/{quote}" if base.isalpha() and quote == "USD" else None
+
+
 @router.get("/market/bars")
 def get_bars(
     symbol: str,
@@ -73,10 +84,18 @@ def get_bars(
         start = (datetime.now(UTC) - timedelta(days=6)).strftime("%Y-%m-%d")
     else:
         start = (datetime.now(UTC) - timedelta(days=max(limit * 3, 400))).strftime("%Y-%m-%d")
-    qs = urllib.parse.urlencode(
-        {"timeframe": timeframe, "start": start, "limit": limit, "feed": "iex", "adjustment": "raw", "sort": "desc"}
-    )
-    url = f"{DATA_BASE_URL}/v2/stocks/{symbol.upper()}/bars?{qs}"
+    crypto_pair = _crypto_pair(symbol)
+    if crypto_pair:
+        # Crypto trades 24/7 and has its own data endpoint; no feed/adjustment.
+        qs = urllib.parse.urlencode(
+            {"symbols": crypto_pair, "timeframe": timeframe, "start": start, "limit": limit, "sort": "desc"}
+        )
+        url = f"{DATA_BASE_URL}/v1beta3/crypto/us/bars?{qs}"
+    else:
+        qs = urllib.parse.urlencode(
+            {"timeframe": timeframe, "start": start, "limit": limit, "feed": "iex", "adjustment": "raw", "sort": "desc"}
+        )
+        url = f"{DATA_BASE_URL}/v2/stocks/{symbol.upper()}/bars?{qs}"
     req = urllib.request.Request(
         url,
         headers={
@@ -94,6 +113,8 @@ def get_bars(
         raise HTTPException(status_code=502, detail=f"could not reach Alpaca market data: {exc}") from exc
 
     bars = payload.get("bars") or []
+    if crypto_pair:
+        bars = (bars or {}).get(crypto_pair) or []
     if not bars:
         raise HTTPException(
             status_code=404,
@@ -143,7 +164,11 @@ class NewsItem(BaseModel):
 def get_news(symbol: str, limit: int = Query(10, le=50), user: AuthUser = CurrentUser) -> list[NewsItem]:
     """Real headlines from Alpaca's News API — same bundled data
     entitlement as bars, no separate provider/key needed."""
-    qs = urllib.parse.urlencode({"symbols": symbol.upper(), "limit": limit, "sort": "desc"})
+    pair = _crypto_pair(symbol)
+    # Crypto articles may be tagged BTC/USD or BTCUSD; the filter matches
+    # any listed symbol, so ask for both rather than guess the format.
+    symbols = f"{pair},{pair.replace('/', '')}" if pair else symbol.upper()
+    qs = urllib.parse.urlencode({"symbols": symbols, "limit": limit, "sort": "desc"})
     payload = _alpaca_data_request(f"/v1beta1/news?{qs}")
     items = payload.get("news") or []
     return [
@@ -228,11 +253,18 @@ def submit_paper_order(req: PaperOrderRequest, user: AuthUser = CurrentUser) -> 
         if req.bracket_entry_type == "limit" and req.limit_price is None:
             raise HTTPException(status_code=422, detail="limit_price is required for a limit-entry bracket order")
 
+    crypto_pair = _crypto_pair(req.symbol)
+    if crypto_pair and req.order_type in ("stop", "bracket"):
+        raise HTTPException(
+            status_code=422,
+            detail="Alpaca crypto supports market, limit and stop-limit orders only — not stop or bracket",
+        )
     body: dict = {
-        "symbol": req.symbol.upper(),
+        "symbol": crypto_pair or req.symbol.upper(),
         "qty": str(req.qty),
         "side": req.side,
-        "time_in_force": req.time_in_force,
+        # Alpaca rejects `day` for crypto (it never closes); gtc is the sane default.
+        "time_in_force": "gtc" if crypto_pair else req.time_in_force,
     }
     if req.order_type == "bracket":
         body["type"] = req.bracket_entry_type

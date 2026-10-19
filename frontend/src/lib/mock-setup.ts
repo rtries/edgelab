@@ -8,9 +8,17 @@
  */
 import type { Candle } from "@/components/charts";
 
+// Stocks first (Home slices the first 8), then more stocks/ETFs, then crypto.
+// Crypto symbols are written BTC-USD in the app (a "/" would break URL
+// routes); the backend maps them to Alpaca's BTC/USD. Crypto is
+// display/analysis only for now — it is NOT in the backend auto-trader's
+// WATCHLIST, so the agent never places automated crypto orders.
 export const SCAN_UNIVERSE = [
   "AAPL", "MSFT", "NVDA", "TSLA", "SPY", "AMZN", "GOOGL", "META", "AMD", "NFLX",
   "JPM", "XOM", "COST", "DIS", "BA",
+  "AVGO", "ORCL", "CRM", "INTC", "PLTR", "COIN", "UBER", "V", "MA", "WMT",
+  "PFE", "QQQ", "IWM", "SOFI", "MSTR", "BAC", "KO",
+  "BTC-USD", "ETH-USD", "SOL-USD", "DOGE-USD", "AVAX-USD", "LINK-USD", "LTC-USD", "XRP-USD",
 ] as const;
 
 export type Setup = {

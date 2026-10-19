@@ -15,7 +15,7 @@ const CATEGORIES: { value: FeedbackCategory; label: string }[] = [
 ];
 
 function symbolFromPathname(pathname: string): string | undefined {
-  const m = pathname.match(/^\/stock\/([A-Za-z.]+)/);
+  const m = pathname.match(/^\/stock\/([A-Za-z.-]+)/);
   return m ? m[1].toUpperCase() : undefined;
 }
 

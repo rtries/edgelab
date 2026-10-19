@@ -14,4 +14,7 @@ export const KNOWN_TICKERS = [
   "CAT", "TXN", "VZ", "CMCSA", "NKE", "PM", "UNP", "HON", "RTX", "LOW",
   "AMGN", "SBUX", "BA", "SPGI", "GS", "MS", "BLK", "PLD", "T", "UPS",
   "SPY", "QQQ", "DIA", "IWM", "VTI", "VOO",
+  "PLTR", "COIN", "UBER", "SOFI", "MSTR",
+  // crypto (Alpaca-supported USD pairs), written BTC-USD in the app
+  "BTC-USD", "ETH-USD", "SOL-USD", "DOGE-USD", "AVAX-USD", "LINK-USD", "LTC-USD", "XRP-USD", "DOT-USD",
 ] as const;
