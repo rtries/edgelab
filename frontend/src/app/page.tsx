@@ -133,8 +133,10 @@ export default function Home() {
         )}
       </Panel>
 
-      <Panel title="Market news">
-        <NewsFeed limit={8} />
+      <Panel title="News on your watchlist">
+        {/* The general market feed is mostly price-target blurbs on tickers
+            nobody here tracks — scope it to the symbols Home is watching. */}
+        <NewsFeed symbol={SCAN_UNIVERSE.slice(0, 8).join(",")} limit={8} />
       </Panel>
 
       <div className="flex gap-3 text-xs text-ink-400">
