@@ -12,6 +12,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ErrorBox, Panel, PreviewBadge } from "@/components/ui";
+import { NewsFeed } from "@/components/news-feed";
 import { api, fmt, mapWithConcurrency, type Decision, type PaperAccount, type PaperPosition } from "@/lib/api";
 import { SCAN_UNIVERSE } from "@/lib/mock-setup";
 
@@ -130,6 +131,10 @@ export default function Home() {
             ))}
           </div>
         )}
+      </Panel>
+
+      <Panel title="Market news">
+        <NewsFeed limit={8} />
       </Panel>
 
       <div className="flex gap-3 text-xs text-ink-400">

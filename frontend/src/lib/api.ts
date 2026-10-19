@@ -435,8 +435,12 @@ export const api = {
   agentActivity: (limit = 50) => get<AgentActivityEvent[]>(`/api/v1/agent/activity?limit=${limit}`),
   enableAgent: () => post<{ enabled: boolean }>("/api/v1/agent/enable"),
   disableAgent: () => post<{ enabled: boolean }>("/api/v1/agent/disable"),
-  news: (symbol: string, limit = 10) =>
-    get<NewsItem[]>(`/api/v1/market/news?${new URLSearchParams({ symbol, limit: String(limit) })}`),
+  // symbol omitted = general market news; may be a comma-separated list.
+  news: (symbol?: string, limit = 10) => {
+    const q = new URLSearchParams({ limit: String(limit) });
+    if (symbol) q.set("symbol", symbol);
+    return get<NewsItem[]>(`/api/v1/market/news?${q}`);
+  },
   marketBars: (symbol: string, timeframe = "1Day", limit = 120) =>
     get<MarketBar[]>(
       `/api/v1/market/bars?${new URLSearchParams({ symbol, timeframe, limit: String(limit) })}`,

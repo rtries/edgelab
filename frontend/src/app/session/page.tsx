@@ -23,6 +23,7 @@ import { CandlestickChart, VolumeChart } from "@/components/charts";
 import { ConfidenceStamp, ErrorBox, Panel, PreviewBadge, Stat } from "@/components/ui";
 import { Term } from "@/components/glossary";
 import { SymbolSearch } from "@/components/symbol-search";
+import { NewsFeed } from "@/components/news-feed";
 import { OrderTicket } from "@/components/order-ticket";
 import { api, fmt, mapWithConcurrency, type Decision, type PaperPosition } from "@/lib/api";
 import { SCAN_UNIVERSE, buildCandles, buildSetup } from "@/lib/mock-setup";
@@ -393,6 +394,10 @@ export default function SessionPage() {
           )}
         </Panel>
       </div>
+
+      <Panel title={`${symbol} news`}>
+        <NewsFeed symbol={symbol} limit={6} />
+      </Panel>
     </div>
   );
 }

@@ -161,14 +161,27 @@ class NewsItem(BaseModel):
 
 
 @router.get("/market/news")
-def get_news(symbol: str, limit: int = Query(10, le=50), user: AuthUser = CurrentUser) -> list[NewsItem]:
+def get_news(
+    symbol: str | None = None, limit: int = Query(10, le=50), user: AuthUser = CurrentUser
+) -> list[NewsItem]:
     """Real headlines from Alpaca's News API — same bundled data
-    entitlement as bars, no separate provider/key needed."""
-    pair = _crypto_pair(symbol)
-    # Crypto articles may be tagged BTC/USD or BTCUSD; the filter matches
-    # any listed symbol, so ask for both rather than guess the format.
-    symbols = f"{pair},{pair.replace('/', '')}" if pair else symbol.upper()
-    qs = urllib.parse.urlencode({"symbols": symbols, "limit": limit, "sort": "desc"})
+    entitlement as bars, no separate provider/key needed.
+
+    `symbol` may be omitted (general market news), one symbol, or a
+    comma-separated list (e.g. a watchlist)."""
+    wanted: list[str] = []
+    for raw in (symbol or "").split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        pair = _crypto_pair(raw)
+        # Crypto articles may be tagged BTC/USD or BTCUSD; the filter matches
+        # any listed symbol, so ask for both rather than guess the format.
+        wanted += [pair, pair.replace("/", "")] if pair else [raw.upper()]
+    params: dict = {"limit": limit, "sort": "desc"}
+    if wanted:
+        params["symbols"] = ",".join(wanted)
+    qs = urllib.parse.urlencode(params)
     payload = _alpaca_data_request(f"/v1beta1/news?{qs}")
     items = payload.get("news") or []
     return [
